@@ -1,6 +1,8 @@
 #ifndef SHMALLOC_H
 #define SHMALLOC_H
 
+#include <pthread.h>
+
 struct Header {
     struct Header *prev, *next;
     size_t size;
@@ -8,9 +10,23 @@ struct Header {
     int id;
     unsigned char is_free;
     char[] bitseq = "11111111";
+    pthread_mutex_t mutex;
 };
 
 typedef struct Header Header;
+
+// TODO Have that whole #define __shmalloc for taking in __LINE__ and __FILE__
+// business. See the project specs for info
+
+/**
+ * Creates a new empty header.
+ */
+Header *create_header(size_t size, int id);
+
+/**
+ * Destroys the given header structure.
+ */
+void destroy_header(Header *);
 
 /**
  * Allocate shared .memory that's already been attached via shmat(3).
