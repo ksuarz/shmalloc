@@ -1,0 +1,255 @@
+malloc
+======
+Advanced `malloc(3)` for pros. Remember what `malloc` does for the client: it
+fetches a chunk of uninitialized memory from the heap and returns a pointer to
+it.
+
+Implementing `malloc`
+---------------------
+We can imagine that the initial state of the heap is one giant array of
+uninitialized data. `malloc` must maintain internal data structures to keep
+track of it, along with which chunks of memory have been allocated and which are
+still free. For each chunk of memory in the giant array, we keep track of it
+using a structure like this:
+
+    struct mementry {
+        unsigned int size;              // Size of the allocated space
+        struct mementry *prev, *next;   // Pointers to next memory chunk
+        unsigned char is_free;          // Boolean - true or false
+    }
+
+Each `mementry` structure is like a doubly-linked list node, with pointers to
+the memory chunks before and after it. It acts like a header for each chunk of
+allocated memory, telling us information about it.
+
+Some global static variables, along with function prototypes for our public
+interface:
+
+    #define BLOCKSIZE 100000    // Some predetermined max size
+    char big_block[BLOCKSIZE];  // This is the actual heap
+
+    /**
+     * Allocate a chunk of memory of the given size.
+     */
+    void *minimalloc(unsigned int);
+
+    /**
+     * Frees allocated memory.
+     */
+    void minifree(void *);
+
+The heap initially looks like this:
+
+    ---------------------------------------------------------
+    | mementry |                                            |
+    ---------------------------------------------------------
+      size: BLOCKSIZE - sizeof(struct mementry)
+      prev: NULL
+      next: NULL
+      is_free: 1
+
+Whenever we allocate memory, a chunk of memory preceding the allocated memory
+should be set aside for a `mementry` structure. (The pointer actually returned
+by `minimaloc` is memory of the specified size immediately after the structure.)
+Think of this like a header used for each chunk of allocated memory. Thus, after
+the call `minimalloc(20)`, we have this:
+
+     size: 20
+     prev: NULL
+     next: big_block[20] + sizeof(struct mementry)
+     is_free: 0
+    ----------------------------------------------------------------------
+    | mementry |  allocated space                | mementry |            |
+    ----------------------------------------------------------------------
+               ^                                   size: 0
+               pointer returned by minimalloc      prev: big_block + 20 +
+                                                    sizeof(struct mementry)
+                                                   next: NULL
+                                                   is_free: 1
+
+The first `mementry` struct will indicate that it is not free; the size of the
+allocated space will also be stored in there. The second `mementry` is free and
+will be at the start of the next chunk of memory we divide up on the next call
+to `minimalloc`.
+
+Every time `minimalloc` is called, we must keep in mind that the actual size of
+memory used for a request of size `n` is actually `n + sizeof(struct mementry)`.
+Calling `minifree` will assume that there is a `struct mementry` immediately
+preceding the pointer; passing in an invalid pointer will lead to errors.
+
+Here's our actual implementation, using a first-fit memory selection algorithm:
+
+    #define BLOCKSIZE 100000
+    char big_block[BLOCKSIZE];
+
+    typedef struct mementry mementry_t;
+
+    void *minimalloc(unsigned int size) {
+        static int initialized = 0;
+        static mementry_t *root;
+        mementry_t *p, *next;
+
+        if (!initialized) {
+            // One-time initialization on the first call
+            root = big_block;
+            root->size = blocksize - sizeof(mementry_t);
+            root->prev = NULL;
+            root->next = NULL;
+            root->is_free = 1;
+            initialized = 1;
+        }
+
+        p = root;
+        do {
+            if(!p->is_free) {
+                // Not free.
+                p = p->next;
+            }
+            else if (p->size < size) {
+                // Too small to satisfy the request.
+                p = p->next;
+            }
+            else if (p->size < (size + sizeof(mementry_t))) {
+                // Not enough space to chop up - give them all of it
+                p->is_free = 0;
+                // Cast to char * to guarantee the proper pointer arithmetic
+                return (char *) p + sizeof(mementry_t);
+                // Equivalent to `return p + 1`
+            }
+            else {
+                // Found a chunk to allocate and break up
+                next = (mementry_t *)((char *) p + size + sizeof(mementry_t));
+                // Equivalent to next = (mementry_t *)((char *) (p + 1) + size)
+                next->prev = p;
+                next->next = p->next;
+                next->size = p->size - sizeof(mementry_t) - size;
+                next->is_free = 1;
+                if (p->next != NULL) {
+                    p->next->prev = next;
+                }
+                p->next = next;
+                p->size = size;
+                p->is_free = 0;
+                return (char *) p + sizeof(mementry_t);
+            }
+        } while (p != NULL);
+
+        // No space available to fulfill the request.
+        return NULL;
+    }
+
+    void minifree(void *ptr) {
+        mementry_t *p, *prev, *next;
+
+        p = (mementry_t *) ptr - 1;
+        if (ptr == NULL) {
+            return;
+        }
+        else if ((prev = p.prev) != NULL && prev->is_free) {
+            // Coalesce adjacent free nodes together
+            prev->size += sizeof(mementry_t) + p->size;
+            prev->next = p.next;
+            if (prev->next != NULL) {
+                prev->next->prev = prev;
+            }
+        }
+        else {
+            p->is_free = 1;
+            prev = p;
+        }
+
+        if ((next = p.next) != NULL && next->is_free) {
+            prev->size += sizeof(mementry_t) + next->size;
+            prev->is_free = 1;
+        }
+        else {
+            prev->is_free = 1;
+        }
+    }
+
+Memory Fragmentation
+--------------------
+A situation that occurs when many small bits of memory cannot be used. Because
+the memory is in fragments and not one contiguous block, it cannot be used for
+future allocation requests.
+
+### Internal Fragmentation
+This occurs when we return memory whose size is larger than that of the original
+request. (For our implementation, it happens when the size of the memory chunk
+is large enough to satisfy the request, but still not large enough to break up
+with another `struct mementry`. Also happens for algorithms that return chunks
+in fixed size multiples.)
+
+### External Fragmentation
+This occurs when we have small, free chunks of memory separate from each other.
+Because none of the chunks are large enough for a reasonably-sized allocation
+request, they never get used.
+
+### Combating Fragmentation
+The naive idea to solve external fragmentation is to take all of the
+unallocated, tiny chunks of memory, move them to the end and coalesce them into
+one large block of memory. This fails because the users of `minimalloc` won't
+know that their pointers have now changed in the newly defragmented space.
+
+Some memory allocation implementations use a best-fit algorithm, which finds the
+best-possible (i.e. least wasteful) chunk of memory to allocate. However, this
+also tends to lead to fragmentation with extremely tiny unusable chunks.
+
+Here are some ideas that could actually work:
+- Have some sort of size threshold. For chunks of memory larger than the
+  threshold, we allocate from one end; for small chunks smaller than the
+  threshold, allocate from the other end.
+
+Advanced Malloc: Using `sbrk`
+-----------------------------
+The `sbrk` system call increments the program break of a process in its virtual
+memory address space by a given amount. In `unistd.h`:
+
+    void *sbrk(intptr_t);
+
+This function modifies the break pointer, which is a pointer to the program
+break. On success, this returns a pointer to the old program break. On failure,
+it returns `(void *) -1`. If the argument is a positive number, this grows the
+heap; a negative number will shrink it. Passing in zero does nothing except
+return the current break pointer.
+
+Sucessful calls to `sbrk` modify the amount of heap space available to the
+program. If you are increasing the size, `sbrk`'s return value is now a pointer
+to the newly allocated space.
+
+Here's our new version of `malloc`:
+
+    // .. while loop
+
+    if ((p = (mementry_t *) sbrk(sizeof(mementry_t) + size)) == (void *) -1) {
+        // sbrk failed
+        return NULL;
+    }
+    else if (last == 0) {
+        // First block created
+        p->prev = NULL;
+        p->next = NULL;
+        p->size = size;
+        p->is_free = 0;
+        root = last = p;
+        return (char *) p + sizeof(struct mementry_t);
+    }
+    else {
+        // Other blocks appended
+        p->prev = last;
+        p->next = last->next;
+        p->size = size;
+        p->is_free = 0;
+        last = p;
+        return (char *) p + sizeof(struct mementry_t);
+    }
+
+Error-Catching `malloc`
+-----------------------
+- Use a recognition pattern in the headers to see if we're in a valid chunk of
+  allocated memory.
+- The macros `__FILE__` and `__LINE__` return the current filename and current
+  source file line number, respectively.
+- Most errors are in `free`; `malloc` can also detect if we're trying to
+  allocate another block but the internal data structures maintained by it are
+  corrupted (e.g. the `last` pointer has been corrupted)
