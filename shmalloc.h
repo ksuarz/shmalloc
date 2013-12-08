@@ -11,8 +11,9 @@ struct Header {
     int refcount;
     int id;
     unsigned char is_free;
-    const int bitseq;
+    int bitseq;
     pthread_mutex_t mutex;
+    pthread_mutexattr_t attr;
 };
 
 typedef struct Header Header;
@@ -21,9 +22,9 @@ typedef struct Header Header;
 // business. See the project specs for info
 
 /**
- * Creates a new empty header.
+ * Initializes values in header
  */
-Header *create_header(size_t size, int id);
+void initialize_header(Header *h, size_t size, int id, unsigned char is_first);
 
 /**
  * Destroys the given header structure.

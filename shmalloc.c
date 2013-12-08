@@ -32,3 +32,24 @@ void shmfree(void *shmptr)
         }
     }
 }
+
+void initialize_header(Header *h, size_t size, int id, unsigned char is_first)
+{
+    //Sanity check
+    if(h == NULL)
+        return;
+
+    h->prev = NULL;
+    h->next = NULL;
+    h->size = size;
+    h->refcount = 0;
+    h->id = id;
+    h->is_free = 1;
+    h->bitseq = BITSEQ;
+
+    if(is_first) {
+        pthread_mutexattr_init(&(h->attr));
+        pthread_mutexattr_setpshared(&(h->attr), PTHREAD_PROCESS_SHARED);
+        pthread_mutex_init(&(h->mutex), &(h->attr));
+    }
+}
