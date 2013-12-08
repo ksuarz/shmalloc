@@ -3,13 +3,15 @@
 
 #include <pthread.h>
 
+#define BITSEQ 1111111
+
 struct Header {
     struct Header *prev, *next;
     size_t size;
     int refcount;
     int id;
     unsigned char is_free;
-    char[] bitseq = "11111111";
+    const int bitseq;
     pthread_mutex_t mutex;
 };
 
