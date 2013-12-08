@@ -2,7 +2,6 @@
 
 /*
  * Frees an object in shared memory
- * TODO:Figure out mutexes
  */
 void shmfree(void *shmptr)
 {
