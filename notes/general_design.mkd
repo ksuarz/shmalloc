@@ -1,0 +1,11 @@
+shmfree
+======
+Right now, using a basic locking system where only the mutex on the first header
+is initialized and use. So we lock the entire chunk for every operation. This
+can be fixed later so we only lock what we absolutely need to. Yay concurrency!
+
+initialize_header
+================
+This was changed from the original create_header because we don't want to create
+and return a pointer, otherwise we would need the shmptr. This just initializes
+all of the values.
