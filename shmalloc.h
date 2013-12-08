@@ -12,6 +12,7 @@ struct Header {
     int id;
     unsigned char is_free;
     int bitseq;
+    unsigned char has_mutex;
     pthread_mutex_t mutex;
     pthread_mutexattr_t attr;
 };
