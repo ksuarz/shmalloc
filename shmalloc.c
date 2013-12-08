@@ -2,12 +2,12 @@
 
 /*
  * Frees an object in shared memory
- * TODO:Figure out mutexes
  */
 void shmfree(void *shmptr)
 {
     //Get the associated header
     Header *h = shmptr - sizeof(Header);
+    Header *first = h;
 
     //Check that this is a valid header
     if(h->bitseq != BITSEQ)
@@ -16,6 +16,13 @@ void shmfree(void *shmptr)
     //Bit sequence matches, can proceed
     if(h->is_free)
         return;
+
+    //LOCK EVERYTHING
+    while(first->prev != NULL)
+    {
+        first = first->prev;
+    }
+    pthread_mutex_lock(&(first->mutex));
 
     //If we are the last reference
     if(--(h->refcount) <= 0)
@@ -31,6 +38,8 @@ void shmfree(void *shmptr)
             h->is_free = 1;
         }
     }
+
+    pthread_mutex_unlock(&(first->mutex));
 }
 
 void initialize_header(Header *h, size_t size, int id, unsigned char is_first)
