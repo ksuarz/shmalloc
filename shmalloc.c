@@ -57,6 +57,87 @@ void *_shmalloc(int id, size_t *size, void *shmptr, int line, char *file) {
 }
 
 /*
+ * Allocates an object in shared memory
+ */
+void *shmalloc(int id, size_t *size, void *shmptr)
+{
+    Header *first = (Header *) shmptr;
+    Header *curr = first;
+    Header *best_fit = NULL;
+    size_t curr_block_size;
+    size_t best_block_size;
+
+    //First time calling shmalloc
+    if(!first || first->bitseq != BITSEQ)
+    {
+        initialize_header(first, *size, id, 1);
+        //TODO: implement this
+    }
+    else
+    {
+        //Lock shared memory
+        pthread_mutex_lock(&(first->mutex));
+
+        //Loop through all headers to see if id already exists
+        //Also record best spot to put this new item if it does not exist
+        while(curr != NULL)
+        {
+            if(curr->id == id && !curr->is_free)
+            {
+                //Already have item with this id
+                curr->refcount++;
+                *size = curr->size;
+
+                //Can unlock mutex and return here
+                pthread_mutex_unlock(&(first->mutex));
+                return (curr + sizeof(Header));
+            }
+
+            //Get size of this block
+            //TODO: Need size of shared memory to get size of last block
+            if(curr->next != NULL)
+            {
+                curr_block_size = curr->next - (curr + sizeof(Header));
+                if(curr_block_size < best_block_size)
+                {
+                    best_block_size = curr_block_size;
+                    best_fit = curr;
+                }
+            }
+
+            curr = curr->next;
+        }
+
+        //Did not find existing entry
+
+        if(best_fit == NULL)
+        {
+            //Did not find a viable chunk, failure
+            pthread_mutex_unlock(&(first->mutex));
+            return NULL;
+        }
+
+        //Found a viable chunk - use it
+        best_fit->size = *size;
+        best_fit->refcount = 1;
+        best_fit->id = id;
+        best_fit->is_free = 0;
+
+        //Check if there is enough room to make another header
+        //TODO: Need to fix if this is the last chunk
+        if(best_fit->next != NULL && (best_fit->next - (best_fit +
+           sizeof(Header) + best_fit->size)) > sizeof(Header))
+        {
+            curr = best_fit + sizeof(Header) + best_fit->size;
+            initialize_header(curr, 0, -1, 0);
+        }
+
+        pthread_mutex_unlock(&(first->mutex));
+        return (best_fit + sizeof(Header));
+    }
+}
+
+/*
  * Frees an object in shared memory
  */
 void shmfree(void *shmptr)
