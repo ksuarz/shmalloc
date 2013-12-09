@@ -6,13 +6,15 @@
 #define BITSEQ 1111111
 
 struct Header {
-    struct Header *prev, *next;
-    size_t size;
-    int refcount;
-    int id;
-    unsigned char is_free;
+    // TODO : instead, could we have the mutex as an extern instead of in the
+    // struct?
     int bitseq;
+    int id;
+    int refcount;
+    size_t size;
+    struct Header *prev, *next;
     unsigned char has_mutex;
+    unsigned char is_free;
     pthread_mutex_t mutex;
     pthread_mutexattr_t attr;
 };

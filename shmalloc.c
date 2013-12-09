@@ -1,5 +1,61 @@
 #include "shmalloc.h"
 
+/**
+ * Allocates a chunk of shared memory.
+ */
+void *shmalloc(int id, size_t *size, void *shmptr)
+{
+    static int initialized = 0;
+    static Header *root;
+    Header *p, *next;
+
+    if (!initialized) {
+        // One-time initialization on the first call
+        // TODO call the header init thing?
+    }
+
+    // Lock the mutex
+    pthread_mutex_lock(&root->mutex);
+
+    p = root;
+    do {
+        if(!p->is_free) {
+            // Not free.
+            p = p->next;
+        }
+        else if (p->size < size) {
+            // Too small to satisfy the request.
+            p = p->next;
+        }
+        else if (p->size < (size + sizeof(Header))) {
+            // Not enough space to chop up - give them all of it
+            p->is_free = 0;
+            return (char *) p + sizeof(Header);
+        }
+        else {
+            // Found a chunk to allocate and break up
+            next = (Header *)((char *) p + size + sizeof(Header));
+            next->prev = p;
+            next->next = p->next;
+            next->size = p->size - sizeof(Header) - size;
+            next->is_free = 1;
+            if (p->next != NULL) {
+                p->next->prev = next;
+            }
+            p->next = next;
+            p->size = size;
+            p->is_free = 0;
+            return (char *) p + sizeof(Header);
+        }
+    } while (p != NULL);
+
+    // No space available to fulfill the request.
+    return NULL;
+}
+
+void *_shmalloc(int id, size_t *size, void *shmptr, int line, char *file) {
+}
+
 /*
  * Frees an object in shared memory
  */
