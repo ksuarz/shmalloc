@@ -1,11 +1,15 @@
 #include "shmalloc.h"
+#include <stdio.h>
 
 /*
- * Allocates an object in shared memory.
+ * Allocates an object in shared memory. This version attempts to handle
+ * fragmentation by allocating from both sides of the shared memory block based
+ * on a threshold size.
  */
-void *shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
+void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
                char *filename, int linenumber)
 {
+    // TODO Must convert this to two-sided malloc
     Header *first = (Header *) shmptr;
     Header *curr = first;
     Header *best_fit = NULL;
@@ -15,13 +19,13 @@ void *shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
     //First time calling shmalloc
     if(!first || first->bitseq != BITSEQ)
     {
-        initialize_header(first, *size, id, 1);
+        initialize_header(first, *size, id);
 
         //Create the next header if we have enough room
         if((free_size = ((2*sizeof(Header)) + *size)) < shm_size)
         {
             curr = (Header *)(shmptr + sizeof(Header) + *size);
-            initialize_header(curr, free_size, -1, 0);
+            initialize_header(curr, free_size, -1);
         }
 
         return (first + sizeof(Header));
@@ -77,7 +81,7 @@ void *shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
         if((free_size - best_fit->size) > 0)
         {
             curr = (Header *) (best_fit + best_fit->size);
-            initialize_header(curr, (free_size - best_fit->size - sizeof(Header)), -1, 0);
+            initialize_header(curr, (free_size - best_fit->size - sizeof(Header)), -1);
 
             //Adjust pointers
             curr->prev = best_fit;
@@ -95,20 +99,16 @@ void *shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
 }
 
 /*
- * Frees an object in shared memory
+ * Frees an object in shared memory.
+ * TODO Make this work for double-sided list (though it should in theory; check
+ * it anyway)
  */
 void _shmfree(void *shmptr, char *filename, int linenumber)
 {
     Header *h, *prev, *next;
 
-    // Check if nothing has yet to be allocated
-    if (root == NULL) {
-
-    }
-
-    // Get the associated header
-    Header *h = shmptr - sizeof(Header);
-
+    // Get the associated headers
+    h = shmptr - sizeof(Header);
 
     // Like free(3), shmfree() of a NULL pointer has no effect
     if (shmptr == NULL) {
@@ -116,6 +116,10 @@ void _shmfree(void *shmptr, char *filename, int linenumber)
                         filename, linenumber);
         return;
     }
+
+    // Set pointers needed later for unlocking mutexes
+    next = h->next;
+    prev = h->prev;
 
     // Check that this is a valid header - bit sequence must match
     if (h->bitseq != BITSEQ) {
@@ -141,53 +145,60 @@ void _shmfree(void *shmptr, char *filename, int linenumber)
         pthread_mutex_lock(&h->next->mutex);
     }
 
-    //If we are the last reference
+    // If we are the last reference
     if(--(h->refcount) <= 0)
     {
-        //Don't delete the first entry
-        if(h != first) {
-
-            /*Check if we can delete ourselves or our next to free up space*/
-            if(h->next != NULL && h->next->is_free)
-            {
-                h->size += h->next->size + sizeof(Header);
-                destroy_header(h->next);
-            }
-            if(h->prev != NULL && h->prev->is_free)
-            {
-                h->prev->size += h->size + sizeof(Header);
-                destroy_header(h);
-                h = NULL;
-            }
+        // Free the one after us, if possible
+        if (h->next != NULL && h->next->is_free)
+        {
+            h->size += h->next->size + sizeof(Header);
+            destroy_header(h->next);
+            next = NULL;
         }
 
-        //Need to set h to freed
-        if(h != NULL || h == first)
+        // Delete ourself and combine with the previous, if possible
+        if (h->prev != NULL && h->prev->is_free)
+        {
+            h->prev->size += h->size + sizeof(Header);
+            destroy_header(h);
+            h = NULL;
+        }
+
+        // Header is now freed - this also works for the first one
+        if (h != NULL)
         {
             h->is_free = 1;
         }
     }
 
     // Finally, unlock our mutexes in order
-    pthread_mutex_unlock(&(first->mutex));
+    if (prev != NULL) {
+        pthread_mutex_unlock(&prev->mutex);
+    }
+    if (h != NULL) {
+        pthread_mutex_unlock(&h->mutex);
+    }
+    if (next != NULL) {
+        pthread_mutex_unlock(&next->mutex);
+    }
 }
 
 /**
  * Initializes a header with default values.
  */
-void initialize_header(Header *h, size_t size, int id);
+void initialize_header(Header *h, size_t size, int id)
 {
     //Sanity check
     if(h == NULL)
         return;
 
-    h->prev = NULL;
-    h->next = NULL;
-    h->size = size;
-    h->refcount = 0;
+    h->bitseq = BITSEQ;
     h->id = id;
     h->is_free = 1;
-    h->bitseq = BITSEQ;
+    h->next = NULL;
+    h->prev = NULL;
+    h->refcount = 0;
+    h->size = size;
     pthread_mutexattr_init(&(h->attr));
     pthread_mutexattr_setpshared(&(h->attr), PTHREAD_PROCESS_SHARED);
     pthread_mutex_init(&(h->mutex), &(h->attr));
