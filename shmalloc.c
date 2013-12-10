@@ -59,19 +59,27 @@ void *_shmalloc(int id, size_t *size, void *shmptr, int line, char *file) {
 /*
  * Allocates an object in shared memory
  */
-void *shmalloc(int id, size_t *size, void *shmptr)
+void *shmalloc(int id, size_t *size, void *shmptr, size_t shm_size)
 {
     Header *first = (Header *) shmptr;
     Header *curr = first;
     Header *best_fit = NULL;
-    size_t curr_block_size;
+    size_t free_size;
     size_t best_block_size;
 
     //First time calling shmalloc
     if(!first || first->bitseq != BITSEQ)
     {
         initialize_header(first, *size, id, 1);
-        //TODO: implement this
+
+        //Create the next header if we have enough room
+        if((free_size = ((2*sizeof(Header)) + *size)) < shm_size)
+        {
+            curr = (Header *)(shmptr + sizeof(Header) + *size);
+            initialize_header(curr, free_size, -1, 0);
+        }
+
+        return (first + sizeof(Header));
     }
     else
     {
@@ -94,15 +102,10 @@ void *shmalloc(int id, size_t *size, void *shmptr)
             }
 
             //Get size of this block
-            //TODO: Need size of shared memory to get size of last block
-            if(curr->next != NULL)
+            if(curr->size < best_block_size && curr->size > *size)
             {
-                curr_block_size = curr->next - (curr + sizeof(Header));
-                if(curr_block_size < best_block_size)
-                {
-                    best_block_size = curr_block_size;
-                    best_fit = curr;
-                }
+                best_block_size = curr->size;
+                best_fit = curr;
             }
 
             curr = curr->next;
@@ -118,18 +121,27 @@ void *shmalloc(int id, size_t *size, void *shmptr)
         }
 
         //Found a viable chunk - use it
+        free_size = best_fit->size; //Total size of chunk before next header
+
         best_fit->size = *size;
         best_fit->refcount = 1;
         best_fit->id = id;
         best_fit->is_free = 0;
 
         //Check if there is enough room to make another header
-        //TODO: Need to fix if this is the last chunk
-        if(best_fit->next != NULL && (best_fit->next - (best_fit +
-           sizeof(Header) + best_fit->size)) > sizeof(Header))
+        if((free_size - best_fit->size) > 0)
         {
-            curr = best_fit + sizeof(Header) + best_fit->size;
-            initialize_header(curr, 0, -1, 0);
+            curr = (Header *) (best_fit + best_fit->size);
+            initialize_header(curr, (free_size - best_fit->size - sizeof(Header)), -1, 0);
+
+            //Adjust pointers
+            curr->prev = best_fit;
+            curr->next = best_fit->next;
+            best_fit->next = curr;
+            if(best_fit->next != NULL)
+            {
+                best_fit->next->prev = curr;
+            }
         }
 
         pthread_mutex_unlock(&(first->mutex));
@@ -164,14 +176,25 @@ void shmfree(void *shmptr)
     //If we are the last reference
     if(--(h->refcount) <= 0)
     {
-        /* If the previous header is also free, we can
-         * get rid of this one to open up space*/
-        if(h->prev->is_free)
-        {
-            destroy_header(h);
-            return;
+        //Don't delete the first entry
+        if(h != first) {
+
+            /*Check if we can delete ourselves or our next to free up space*/
+            if(h->next != NULL && h->next->is_free)
+            {
+                h->size += h->next->size + sizeof(Header);
+                destroy_header(h->next);
+            }
+            if(h->prev != NULL && h->prev->is_free)
+            {
+                h->prev->size += h->size + sizeof(Header);
+                destroy_header(h);
+                h = NULL;
+            }
         }
-        else
+
+        //Need to set h to freed
+        if(h != NULL || h == first)
         {
             h->is_free = 1;
         }
