@@ -15,7 +15,15 @@ void *shmalloc(int id, size_t *size, void *shmptr, size_t shm_size)
     if(!first || first->bitseq != BITSEQ)
     {
         initialize_header(first, *size, id, 1);
-        //TODO: implement this
+
+        //Create the next header if we have enough room
+        if((free_size = ((2*sizeof(Header)) + *size)) < shm_size)
+        {
+            curr = (Header *)(shmptr + sizeof(Header) + *size);
+            initialize_header(curr, free_size, -1, 0);
+        }
+
+        return (first + sizeof(Header));
     }
     else
     {
@@ -38,7 +46,6 @@ void *shmalloc(int id, size_t *size, void *shmptr, size_t shm_size)
             }
 
             //Get size of this block
-            //TODO: Need size of shared memory to get size of last block
             if(curr->size < best_block_size && curr->size > *size)
             {
                 best_block_size = curr->size;
