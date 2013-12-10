@@ -1,65 +1,10 @@
 #include "shmalloc.h"
 
-/**
- * Allocates a chunk of shared memory.
- */
-void *shmalloc(int id, size_t *size, void *shmptr)
-{
-    static int initialized = 0;
-    static Header *root;
-    Header *p, *next;
-
-    if (!initialized) {
-        // One-time initialization on the first call
-        // TODO call the header init thing?
-    }
-
-    // Lock the mutex
-    pthread_mutex_lock(&root->mutex);
-
-    p = root;
-    do {
-        if(!p->is_free) {
-            // Not free.
-            p = p->next;
-        }
-        else if (p->size < size) {
-            // Too small to satisfy the request.
-            p = p->next;
-        }
-        else if (p->size < (size + sizeof(Header))) {
-            // Not enough space to chop up - give them all of it
-            p->is_free = 0;
-            return (char *) p + sizeof(Header);
-        }
-        else {
-            // Found a chunk to allocate and break up
-            next = (Header *)((char *) p + size + sizeof(Header));
-            next->prev = p;
-            next->next = p->next;
-            next->size = p->size - sizeof(Header) - size;
-            next->is_free = 1;
-            if (p->next != NULL) {
-                p->next->prev = next;
-            }
-            p->next = next;
-            p->size = size;
-            p->is_free = 0;
-            return (char *) p + sizeof(Header);
-        }
-    } while (p != NULL);
-
-    // No space available to fulfill the request.
-    return NULL;
-}
-
-void *_shmalloc(int id, size_t *size, void *shmptr, int line, char *file) {
-}
-
 /*
- * Allocates an object in shared memory
+ * Allocates an object in shared memory.
  */
-void *shmalloc(int id, size_t *size, void *shmptr, size_t shm_size)
+void *shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
+               char *filename, int linenumber)
 {
     Header *first = (Header *) shmptr;
     Header *curr = first;
@@ -152,26 +97,49 @@ void *shmalloc(int id, size_t *size, void *shmptr, size_t shm_size)
 /*
  * Frees an object in shared memory
  */
-void shmfree(void *shmptr)
+void _shmfree(void *shmptr, char *filename, int linenumber)
 {
-    //Get the associated header
-    Header *h = shmptr - sizeof(Header);
-    Header *first = h;
+    Header *h, *prev, *next;
 
-    //Check that this is a valid header
-    if(h->bitseq != BITSEQ)
-        return;
+    // Check if nothing has yet to be allocated
+    if (root == NULL) {
 
-    //Bit sequence matches, can proceed
-    if(h->is_free)
-        return;
-
-    //LOCK EVERYTHING
-    while(first->prev != NULL)
-    {
-        first = first->prev;
     }
-    pthread_mutex_lock(&(first->mutex));
+
+    // Get the associated header
+    Header *h = shmptr - sizeof(Header);
+
+
+    // Like free(3), shmfree() of a NULL pointer has no effect
+    if (shmptr == NULL) {
+        fprintf(stderr, "%s, line %d: Cannot free a null pointer.\n",
+                        filename, linenumber);
+        return;
+    }
+
+    // Check that this is a valid header - bit sequence must match
+    if (h->bitseq != BITSEQ) {
+        fprintf(stderr, "%s, line %d: Attempting to free a corrupted pointer, "
+                        "or a pointer not allocated by shmalloc().\n",
+                        filename, linenumber);
+        return;
+    }
+
+    // Check for double-free
+    if (h->is_free) {
+        fprintf(stderr, "%s, line %d: Redundant freeing of a pointer.\n",
+                        filename, linenumber);
+        return;
+    }
+
+    // Canonical locking order: previous, current, next
+    if (h->prev != NULL) {
+        pthread_mutex_lock(&h->prev->mutex);
+    }
+    pthread_mutex_lock(&h->mutex);
+    if (h->next != NULL) {
+        pthread_mutex_lock(&h->next->mutex);
+    }
 
     //If we are the last reference
     if(--(h->refcount) <= 0)
@@ -200,10 +168,14 @@ void shmfree(void *shmptr)
         }
     }
 
+    // Finally, unlock our mutexes in order
     pthread_mutex_unlock(&(first->mutex));
 }
 
-void initialize_header(Header *h, size_t size, int id, unsigned char is_first)
+/**
+ * Initializes a header with default values.
+ */
+void initialize_header(Header *h, size_t size, int id);
 {
     //Sanity check
     if(h == NULL)
@@ -216,22 +188,14 @@ void initialize_header(Header *h, size_t size, int id, unsigned char is_first)
     h->id = id;
     h->is_free = 1;
     h->bitseq = BITSEQ;
-
-    if(is_first) {
-        h->has_mutex = 1;
-        pthread_mutexattr_init(&(h->attr));
-        pthread_mutexattr_setpshared(&(h->attr), PTHREAD_PROCESS_SHARED);
-        pthread_mutex_init(&(h->mutex), &(h->attr));
-    }
-    else
-    {
-        h->has_mutex = 0;
-    }
+    pthread_mutexattr_init(&(h->attr));
+    pthread_mutexattr_setpshared(&(h->attr), PTHREAD_PROCESS_SHARED);
+    pthread_mutex_init(&(h->mutex), &(h->attr));
 }
 
 /*
- * Destroys a header struct
- * Assumes that if a mutex exists, it is locked
+ * Destroys a header. Does some appropriate locking to obtain only the resources
+ * we require.
  */
 void destroy_header(Header *h)
 {
@@ -239,7 +203,18 @@ void destroy_header(Header *h)
     if(h == NULL)
         return;
 
-    //Adjust previous and next accordingly
+    // Lock the mutexes we need
+    if (h->prev != NULL)
+    {
+        pthread_mutex_lock(&h->prev->mutex);
+    }
+    pthread_mutex_lock(&h->mutex);
+    if (h->next != NULL)
+    {
+        pthread_mutex_lock(&h->next->mutex);
+    }
+
+    // Critical section: adjust previous and next accordingly
     if(h->prev != NULL)
     {
         h->prev->next = h->next;
@@ -252,11 +227,15 @@ void destroy_header(Header *h)
     //Now the list is good, corrupt bitseq to be safe
     h->bitseq += 1;
 
-    //Unlock and destroy mutex
-    if(h->has_mutex)
+    // Unlock and destroy mutex
+    if (h->prev != NULL)
     {
-        pthread_mutex_unlock(&(h->mutex));
-        pthread_mutex_destroy(&(h->mutex));
+        pthread_mutex_unlock(&h->prev->mutex);
     }
-
+    pthread_mutex_unlock(&h->mutex);
+    pthread_mutex_destroy(&h->mutex);
+    if (h->next != NULL)
+    {
+        pthread_mutex_unlock(&h->next->mutex);
+    }
 }

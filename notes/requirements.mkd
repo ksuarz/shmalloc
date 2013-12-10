@@ -1,0 +1,9 @@
+requirements
+============
+See `Detectable Errors` in the assignment PDF.
+
+- [x] `free()`ing pointers that were never allocated
+- [x] `free()`ing pointers to dynamic memory that were not returned by malloc
+- [x] Redundant `free()` of the same pointer
+- [ ] Saturation
+- [ ] Fragmentation

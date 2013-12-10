@@ -4,30 +4,29 @@
 #include <pthread.h>
 
 #define BITSEQ 1111111
+#define shmalloc(i, s, p, sz) _shmalloc(i, s, p, sz, __FILE__, __LINE__)
+#define shmfree( ptr ) _shmfree(ptr, __FILE__, __LINE__)
 
+/**
+ * Header for managing allocated memory.
+ */
 struct Header {
-    // TODO : instead, could we have the mutex as an extern instead of in the
-    // struct?
     int bitseq;
     int id;
     int refcount;
-    size_t size;
-    struct Header *prev, *next;
-    unsigned char has_mutex;
-    unsigned char is_free;
     pthread_mutex_t mutex;
     pthread_mutexattr_t attr;
+    size_t size;
+    struct Header *prev, *next;
+    unsigned char is_free;
 };
 
 typedef struct Header Header;
 
-// TODO Have that whole #define __shmalloc for taking in __LINE__ and __FILE__
-// business. See the project specs for info
-
 /**
- * Initializes values in header
+ * Initializes values in header.
  */
-void initialize_header(Header *h, size_t size, int id, unsigned char is_first);
+void initialize_header(Header *h, size_t size, int id);
 
 /**
  * Destroys the given header structure.
@@ -37,22 +36,13 @@ void destroy_header(Header *);
 /**
  * Allocate shared .memory that's already been attached via shmat(3).
  * Returns a pointer to the newly allocated memory.
- *
- * @param id - An application-specific ID number
- * @param size - A pointer to a size_t. If a block of memory has not yet been
- * allocated with the given ID, a new block is allocated of the given size.
- * Otherwise, the value of size is updated to the actual size of the allocated
- * block.
- * @param shmptr - A pointer to a block of shared memory previously attached to
- * via shmat(3).
  */
-void *shmalloc(int id, size_t *size, void *shmptr, size_t shm_size);
+void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
+                char *filename, int linenumber);
 
 /**
  * Frees a block of shared memory previously allocated with shmalloc().
- *
- * @param shmptr - A pointer to the block to free.
  */
-void shmfree(void *shmptr);
+void _shmfree(void *shmptr, char *filename, int linenumber);
 
 #endif
