@@ -44,7 +44,7 @@ void destroy_header(Header *);
  * @param shmptr - A pointer to a block of shared memory previously attached to
  * via shmat(3).
  */
-void *shmalloc(int id, size_t *size, void *shmptr);
+void *shmalloc(int id, size_t *size, void *shmptr, size_t shm_size);
 
 /**
  * Frees a block of shared memory previously allocated with shmalloc().

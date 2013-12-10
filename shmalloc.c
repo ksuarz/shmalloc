@@ -3,7 +3,7 @@
 /*
  * Allocates an object in shared memory
  */
-void *shmalloc(int id, size_t *size, void *shmptr)
+void *shmalloc(int id, size_t *size, void *shmptr, size_t shm_size)
 {
     Header *first = (Header *) shmptr;
     Header *curr = first;
