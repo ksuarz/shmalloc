@@ -120,14 +120,25 @@ void shmfree(void *shmptr)
     //If we are the last reference
     if(--(h->refcount) <= 0)
     {
-        /* If the previous header is also free, we can
-         * get rid of this one to open up space*/
-        if(h->prev->is_free)
-        {
-            destroy_header(h);
-            return;
+        //Don't delete the first entry
+        if(h != first) {
+
+            /*Check if we can delete ourselves or our next to free up space*/
+            if(h->next != NULL && h->next->is_free)
+            {
+                h->size += h->next->size + sizeof(Header);
+                destroy_header(h->next);
+            }
+            if(h->prev != NULL && h->prev->is_free)
+            {
+                h->prev->size += h->size + sizeof(Header);
+                destroy_header(h);
+                h = NULL;
+            }
         }
-        else
+
+        //Need to set h to freed
+        if(h != NULL || h == first)
         {
             h->is_free = 1;
         }
