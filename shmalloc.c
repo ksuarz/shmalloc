@@ -7,19 +7,49 @@
  * on a threshold size.
  */
 void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
-               char *filename, int linenumber)
+                char *filename, int linenumber)
 {
-    // TODO Must convert this to two-sided malloc
-    Header *first = (Header *) shmptr;
-    Header *curr = first;
-    Header *best_fit = NULL;
-    size_t free_size;
-    size_t best_block_size;
+    Header *first, *last, *curr, *root, *best_fit;
+    size_t free_size, best_block_size;
 
-    //First time calling shmalloc
-    if(!first || first->bitseq != BITSEQ)
+    // Verify pointers
+    if (shmptr == NULL) {
+        fprintf(stderr, "%s, line %d: Shared memory pointer cannot be null.\n",
+                        filename, linenumber);
+        return NULL;
+    }
+    if (size == NULL) {
+        fprintf(stderr, "%s, line %d: Size pointer cannot be null.\n",
+                        filename, linenumber);
+        return NULL;
+    }
+    if (*size == 0) {
+        // Like malloc(3), passing in a size of zero returns either NULL or
+        // another pointer that can be successfully passed into shmfree()
+        return NULL;
+    }
+    if (*size < 0) {
+        fprintf(stderr, "%s, line %d: Cannot allocate a negative size of memory"
+                        " in shmalloc().\n",
+                        filename, linenumber);
+        return NULL;
+    }
+    if (shm_size < *size + sizeof(Header)) {
+        fprintf(stderr, "%s, line %d: Insufficient memory to fulfill the memory"
+                        " allocation request.\n", filename, linenumber);
+        return NULL;
+    }
+
+    // Grab the first and the last
+    first = (Header *) shmptr;
+    last = (Header *) ((char *) shmptr + shm_size - sizeof(Header));
+
+    // Check to see if we need to initialize (done twice from both sides of
+    // malloc)
+    if(!first || first->bitseq != BITSEQ || !last || last->bitseq != BITSEQ)
     {
         initialize_header(first, *size, id);
+        initialize_header(last, sIZE, )
 
         //Create the next header if we have enough room
         if((free_size = ((2*sizeof(Header)) + *size)) < shm_size)
