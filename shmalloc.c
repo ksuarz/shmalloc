@@ -47,11 +47,13 @@ void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
     if(!first || first->bitseq != BITSEQ)
     {
         initialize_header(first, *size, id, 1);
+        first->is_free = 0;
+        first->refcount++;
 
         //Create the next header if we have enough room
-        if((free_size = (2*sizeof(Header) + *size)) < shm_size)
+        if((free_size = (size_t)((char *)(2*sizeof(Header)) + *size)) < shm_size)
         {
-            curr = (Header *)(shmptr + sizeof(Header) + *size);
+            curr = (Header *)((char *)shmptr + sizeof(Header) + *size);
             initialize_header(curr, free_size, -1, 0);
         }
 
@@ -112,7 +114,7 @@ void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
         if((free_size - best_fit->size) > 0)
         {
             curr = (Header *) ((char *) best_fit + best_fit->size);
-            initialize_header(curr, (free_size - best_fit->size - sizeof(Header)), -1, 0);
+            initialize_header(curr, (size_t)((char *)free_size - best_fit->size - sizeof(Header)), -1, 0);
 
             //Adjust pointers
             curr->prev = best_fit;
