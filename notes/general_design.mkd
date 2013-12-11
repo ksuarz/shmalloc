@@ -9,3 +9,15 @@ initialize_header
 This was changed from the original create_header because we don't want to create
 and return a pointer, otherwise we would need the shmptr. This just initializes
 all of the values.
+
+double allocation (shmalloc)
+============================
+This is how the linked list looks now:
+
+    +--------------------------------------------------+
+    | front | another header |                |  back  |
+    +--------------------------------------------------+
+        
+Here, `front` is not free, `back` is not free, and `another header` is free.
+There will be exactly one header that is saying that the space in the middle is
+free.

@@ -9,7 +9,7 @@
 void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
                 char *filename, int linenumber)
 {
-    Header *first, *last, *curr, *root, *best_fit;
+    Header *root, *first, *last, *opposite_end, *curr, *best_fit;
     size_t free_size, best_block_size;
 
     // Verify pointers
@@ -34,7 +34,7 @@ void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
                         filename, linenumber);
         return NULL;
     }
-    if (shm_size < *size + sizeof(Header)) {
+    if (shm_size < *size + 2*sizeof(Header)) {
         fprintf(stderr, "%s, line %d: Insufficient memory to fulfill the memory"
                         " allocation request.\n", filename, linenumber);
         return NULL;
@@ -44,21 +44,34 @@ void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
     first = (Header *) shmptr;
     last = (Header *) ((char *) shmptr + shm_size - sizeof(Header));
 
-    // Check to see if we need to initialize (done twice from both sides of
-    // malloc)
+    // Check for the first call to shmalloc()
     if(!first || first->bitseq != BITSEQ || !last || last->bitseq != BITSEQ)
     {
-        initialize_header(first, *size, id);
-        initialize_header(last, sIZE, )
+        // Calculate the root, opposite end, and free size
+        // Sizes greater than THRESHOLD are allocated from the back end
+        root = (*size > THRESHOLD) ? last : first;
+        opposite_end = (root == first) ? last : first;
+//        free_size = shm_size - 2*sizeof(Header) - *size;
 
-        //Create the next header if we have enough room
-        if((free_size = ((2*sizeof(Header)) + *size)) < shm_size)
-        {
-            curr = (Header *)(shmptr + sizeof(Header) + *size);
-            initialize_header(curr, free_size, -1);
-        }
+        // Initialize
+        initialize_header(root, *size, id);
+        initialize_header(opposite_end, free_size, 0);
 
-        return (first + sizeof(Header));
+        // Allocate memory and then exit
+        root->is_free = 0;
+        root->refcount = 1;
+
+//        // Can we add one more header?
+//        if (free_size > sizeof(Header))
+//        {
+//            curr = (root == first) ?
+//                (Header *) ((char *) root + sizeof(Header) + *size) :
+//                (Header *) ((char *) root - *size);
+//            initialize_header(curr, )
+//        } 
+        // TODO this is wrong. But it changes depending on how we want to play
+        // this
+        return (root == first) ? root + 1 : root - 1;
     }
     else
     {
