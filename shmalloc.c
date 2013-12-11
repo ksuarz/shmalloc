@@ -113,7 +113,7 @@ void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
         //Check if there is enough room to make another header
         if((free_size - best_fit->size) > 0)
         {
-            curr = (Header *) ((char *) best_fit + best_fit->size);
+            curr = (Header *) ((char *) best_fit + best_fit->size + sizeof(Header));
             initialize_header(curr, (size_t)((char *)free_size - best_fit->size - sizeof(Header)), -1, 0);
 
             //Adjust pointers

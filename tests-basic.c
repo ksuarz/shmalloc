@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define MEM_SIZE 5000
+#define MEM_SIZE 50000
 
 int main(int argc, char *argv[])
 {
@@ -21,6 +21,7 @@ int main(int argc, char *argv[])
     //Allocate 2 things
     printf("Allocating ptr0\n");
     ptr[0] = shmalloc(1, &size, mem, MEM_SIZE);
+
     printf("Allocating ptr1\n");
     ptr[1] = shmalloc(1, &size, mem, MEM_SIZE);
     //Checking that size is right
