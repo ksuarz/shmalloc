@@ -5,7 +5,7 @@
 
 #define BITSEQ 1111111
 #define shmalloc(i, s, p, sz) _shmalloc(i, s, p, sz, __FILE__, __LINE__)
-#define shmfree(ptr) _shmfree(ptr, __FILE__, __LINE__)
+#define shmfree(ptr, s) _shmfree(ptr, s,  __FILE__, __LINE__)
 
 /**
  * A header for managing memory.
@@ -44,6 +44,6 @@ void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
 /**
  * Frees a block of shared memory previously allocated with shmalloc().
  */
-void _shmfree(void *ptr, char *filename, int linenumber);
+void _shmfree(void *ptr, size_t shm_size, char *filename, int linenumber);
 
 #endif

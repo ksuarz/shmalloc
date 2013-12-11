@@ -62,6 +62,8 @@ void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
         //Lock shared memory
         pthread_mutex_lock(&(first->mutex));
 
+        best_block_size = -1;
+
         //Loop through all headers to see if id already exists
         //Also record best spot to put this new item if it does not exist
         while(curr != NULL)
@@ -78,7 +80,7 @@ void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
             }
 
             //Get size of this block
-            if(curr->size < best_block_size && curr->size > *size)
+            if((curr->size < best_block_size || best_block_size == -1) && curr->size >= *size)
             {
                 best_block_size = curr->size;
                 best_fit = curr;
@@ -130,7 +132,7 @@ void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
 /*
  * Frees an object in shared memory
  */
-void _shmfree(void *shmptr, char *filename, int linenumber)
+void _shmfree(void *shmptr, size_t shm_size, char *filename, int linenumber)
 {
     Header *h, *first;
     if (shmptr == NULL) {
@@ -166,8 +168,28 @@ void _shmfree(void *shmptr, char *filename, int linenumber)
     //If we are the last reference
     if(--(h->refcount) <= 0)
     {
+        //Adjust our size
+        if(h->next != NULL)
+        {
+            h->size = h->next - h - sizeof(Header);
+        }
+        else
+        {
+            h->size = (void *) shm_size - (void *)h - sizeof(Header);
+        }
+
         //Don't delete the first entry
         if(h != first) {
+
+            //Adjust our size
+            if(h->next != NULL)
+            {
+                h->size = h->next - h - sizeof(Header);
+            }
+            else
+            {
+                h->size = (void *) shm_size - (void *)h - sizeof(Header);
+            }
 
             /*Check if we can delete ourselves or our next to free up space*/
             if(h->next != NULL && h->next->is_free)
