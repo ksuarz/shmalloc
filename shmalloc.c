@@ -1,85 +1,61 @@
 #include "shmalloc.h"
-
-/**
- * Allocates a chunk of shared memory.
- */
-void *shmalloc(int id, size_t *size, void *shmptr)
-{
-    static int initialized = 0;
-    static Header *root;
-    Header *p, *next;
-
-    if (!initialized) {
-        // One-time initialization on the first call
-        // TODO call the header init thing?
-    }
-
-    // Lock the mutex
-    pthread_mutex_lock(&root->mutex);
-
-    p = root;
-    do {
-        if(!p->is_free) {
-            // Not free.
-            p = p->next;
-        }
-        else if (p->size < size) {
-            // Too small to satisfy the request.
-            p = p->next;
-        }
-        else if (p->size < (size + sizeof(Header))) {
-            // Not enough space to chop up - give them all of it
-            p->is_free = 0;
-            return (char *) p + sizeof(Header);
-        }
-        else {
-            // Found a chunk to allocate and break up
-            next = (Header *)((char *) p + size + sizeof(Header));
-            next->prev = p;
-            next->next = p->next;
-            next->size = p->size - sizeof(Header) - size;
-            next->is_free = 1;
-            if (p->next != NULL) {
-                p->next->prev = next;
-            }
-            p->next = next;
-            p->size = size;
-            p->is_free = 0;
-            return (char *) p + sizeof(Header);
-        }
-    } while (p != NULL);
-
-    // No space available to fulfill the request.
-    return NULL;
-}
-
-void *_shmalloc(int id, size_t *size, void *shmptr, int line, char *file) {
-}
+#include <stdio.h>
 
 /*
  * Allocates an object in shared memory
  */
-void *shmalloc(int id, size_t *size, void *shmptr, size_t shm_size)
+void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
+                char *filename, int linenumber)
 {
-    Header *first = (Header *) shmptr;
-    Header *curr = first;
-    Header *best_fit = NULL;
-    size_t free_size;
-    size_t best_block_size;
+    Header *first, *curr, *best_fit;
+    size_t free_size, best_block_size;
 
-    //First time calling shmalloc
+    // Verify pointers
+    if (shmptr == NULL) {
+        fprintf(stderr, "%s, line %d: Shared memory pointer cannot be null.\n",
+                        filename, linenumber);
+        return NULL;
+    }
+    if (size == NULL) {
+        fprintf(stderr, "%s, line %d: Size pointer cannot be null.\n",
+                        filename, linenumber);
+        return NULL;
+    }
+    if (*size == 0) {
+        // Like malloc(3), passing in a size of zero returns either NULL or
+        // another pointer that can be successfully passed into shmfree()
+        fprintf(stderr, "%s, line %d: Warning: allocating a pointer of size "
+                        "zero returns NULL.\n", filename, linenumber);
+        return NULL;
+    }
+    if (*size < 0) {
+        fprintf(stderr, "%s, line %d: Cannot allocate a negative amount of "
+                        "memory in shmalloc().\n", filename, linenumber);
+        return NULL;
+    }
+    if (shm_size < *size + sizeof(Header)) {
+        fprintf(stderr, "%s, line %d: Insufficient memory to fulfill the memory"
+                        " allocation request.\n", filename, linenumber);
+        return NULL;
+    }
+
+    // Find the first header
+    first = curr = (Header *) shmptr;
+    best_fit = NULL;
+
+    // First time calling shmalloc
     if(!first || first->bitseq != BITSEQ)
     {
         initialize_header(first, *size, id, 1);
 
         //Create the next header if we have enough room
-        if((free_size = ((2*sizeof(Header)) + *size)) < shm_size)
+        if((free_size = (2*sizeof(Header) + *size)) < shm_size)
         {
             curr = (Header *)(shmptr + sizeof(Header) + *size);
             initialize_header(curr, free_size, -1, 0);
         }
 
-        return (first + sizeof(Header));
+        return (first + 1);
     }
     else
     {
@@ -98,7 +74,7 @@ void *shmalloc(int id, size_t *size, void *shmptr, size_t shm_size)
 
                 //Can unlock mutex and return here
                 pthread_mutex_unlock(&(first->mutex));
-                return (curr + sizeof(Header));
+                return (curr + 1);
             }
 
             //Get size of this block
@@ -116,6 +92,8 @@ void *shmalloc(int id, size_t *size, void *shmptr, size_t shm_size)
         if(best_fit == NULL)
         {
             //Did not find a viable chunk, failure
+            fprintf(stderr, "%s, line %d: shmalloc() ran out of available space"
+                            " to satisfy the request.\n", filename, linenumber);
             pthread_mutex_unlock(&(first->mutex));
             return NULL;
         }
@@ -131,7 +109,7 @@ void *shmalloc(int id, size_t *size, void *shmptr, size_t shm_size)
         //Check if there is enough room to make another header
         if((free_size - best_fit->size) > 0)
         {
-            curr = (Header *) (best_fit + best_fit->size);
+            curr = (Header *) ((char *) best_fit + best_fit->size);
             initialize_header(curr, (free_size - best_fit->size - sizeof(Header)), -1, 0);
 
             //Adjust pointers
@@ -145,26 +123,38 @@ void *shmalloc(int id, size_t *size, void *shmptr, size_t shm_size)
         }
 
         pthread_mutex_unlock(&(first->mutex));
-        return (best_fit + sizeof(Header));
+        return (best_fit + 1);
     }
 }
 
 /*
  * Frees an object in shared memory
  */
-void shmfree(void *shmptr)
+void _shmfree(void *shmptr, char *filename, int linenumber)
 {
+    Header *h, *first;
+    if (shmptr == NULL) {
+        // Like free(3), shmfree() of a NULL pointer has no effect
+        fprintf(stderr, "%s, line %d: free() on a NULL pointer does nothing.\n",
+                        filename, linenumber);
+        return;
+    }
+
     //Get the associated header
-    Header *h = shmptr - sizeof(Header);
-    Header *first = h;
+    first = h = ((Header *) shmptr) - 1;
 
-    //Check that this is a valid header
-    if(h->bitseq != BITSEQ)
+    // More verification checks
+    if(h->bitseq != BITSEQ) {
+        fprintf(stderr, "%s, line %d: shmfree() detects corruption of internal "
+                        "data structures. Check your memory accesses.\n",
+                        filename, linenumber);
         return;
-
-    //Bit sequence matches, can proceed
-    if(h->is_free)
+    }
+    if (h->is_free) {
+        fprintf(stderr, "%s, line %d: Attempt to shmfree() a pointer that has "
+                        "already been freed.\n", filename, linenumber);
         return;
+    }
 
     //LOCK EVERYTHING
     while(first->prev != NULL)
