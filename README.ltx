@@ -44,10 +44,12 @@ necessity leads to a clumsier interface for the user, as the same size must
 constantly be passed into every call.
 
 \subsubsection*{shmfree}
-Luckily, \verb/shmfree()/ takes but one argument:
+Luckily, \verb/shmfree()/ takes two arguments:
 \begin{itemize}
 \item
     \verb/ptr/ - The pointer to free.
+\item
+    \verb/shmsize/ - The size of the shared memory segment.
 \end{itemize}
 
 This frees the memory associated with the given pointer. Since multiple
@@ -56,6 +58,10 @@ The memory is actually freed only after the number of calls to \verb/shmfree()/
 match the number of calls to \verb/shmalloc()/ for the same segment. Any process
 that calls \verb/shmfree()/ on a pointer should treat that pointer as unsafe for
 use in the future.
+
+\verb/shmsize/ is required for \verb/shmfree()/ to correctly update its internal
+data structures. Without it, it would be impossible to keep track of memory
+sizes as segments are allocated and freed.
 
 \subsection*{``Missing'' Functions}
 \subsubsection*{shmcalloc}
@@ -177,7 +183,7 @@ we could add another field to the headers that indicate the amount of wasted
 space. However, this extra field might have altered the true amount had it not
 been present.
 
-\section*{shmalloc2}
+\section*{shmalloc2 and Other Issues}
 \verb/shmalloc2()/ attempted to incorporate finer granularity and the
 double-sided allocation scheme. However, the granularity will be extremely
 difficult - if not impossible - to accomplish. Consider a call to
@@ -191,6 +197,13 @@ combination of mutexes. Also, two different processes modifying the list may
 modify sizes of headers in a way that leads to an inconsistent data structure
 despite the use of mutexes. For this reason, it's probably better to stick with
 a global mutex for the entire shared segment.
+
+Another issue is the choice of bit sequence. For back-to-back runs of the
+testing program, we happen to get and attach to the shared memory segment with
+the same junk data from the previous run. This fools \verb/shmalloc()/ into
+thinking that something has been initialized when in fact its data is useless.
+Randomizing the bit sequence at the start of every invocation could help, but
+this is still prone to the occasional error.
 
 \end{document}
 
