@@ -171,25 +171,15 @@ void _shmfree(void *shmptr, size_t shm_size, char *filename, int linenumber)
         //Adjust our size
         if(h->next != NULL)
         {
-            h->size = h->next - h - sizeof(Header);
+            h->size = (char *)h->next - (char *)h - sizeof(Header);
         }
         else
         {
-            h->size = (void *) shm_size - (void *)h - sizeof(Header);
+            h->size = (char *) shm_size - (char *)h - sizeof(Header);
         }
 
         //Don't delete the first entry
         if(h != first) {
-
-            //Adjust our size
-            if(h->next != NULL)
-            {
-                h->size = h->next - h - sizeof(Header);
-            }
-            else
-            {
-                h->size = (void *) shm_size - (void *)h - sizeof(Header);
-            }
 
             /*Check if we can delete ourselves or our next to free up space*/
             if(h->next != NULL && h->next->is_free)

@@ -3,7 +3,7 @@
 
 #include <pthread.h>
 
-#define BITSEQ 1111111
+#define BITSEQ 1111115
 #define shmalloc(i, s, p, sz) _shmalloc(i, s, p, sz, __FILE__, __LINE__)
 #define shmfree(ptr, s) _shmfree(ptr, s,  __FILE__, __LINE__)
 
