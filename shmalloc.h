@@ -10,7 +10,7 @@
 
 // Macros for allocation, freeing, etc.
 #define shmalloc(i, s, p, sz) _shmalloc(i, s, p, sz, __FILE__, __LINE__)
-#define shmfree( ptr ) _shmfree(ptr, __FILE__, __LINE__)
+#define shmfree(shmptr, ptr) _shmfree(shmptr, ptr, __FILE__, __LINE__)
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
 #define MIN(x, y) ((x) > (y) ? (y) : (x))
 
@@ -64,6 +64,6 @@ void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
 /**
  * Frees a block of shared memory previously allocated with shmalloc().
  */
-void _shmfree(void *shmptr, char *filename, int linenumber);
+void _shmfree(void *shmptr, void *ptr, char *filename, int linenumber);
 
 #endif
