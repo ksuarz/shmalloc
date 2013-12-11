@@ -49,7 +49,7 @@ int main(int argc, char **argv) {
         exit(EXIT_FAILURE);
     }
 
-    // Begin tests
+    // Begin tests - only one process
     int x = 7;
     double *ptr;
     size_t dbl_size = sizeof(double);
@@ -76,6 +76,18 @@ int main(int argc, char **argv) {
     dbl_size = 7 * sizeof(double);
     ptr = (double *) shmalloc(shm_id, &dbl_size, shm_ptr, SHM_SIZE);
     shmfree(ptr);
+
+    // Tests - multiple processes
+    int pid;
+    pid = fork();
+    if (pid == 0) {
+        // Child process
+        // Allocate the same ID (one create, another attaches)
+         ptr = (double *) shmalloc(shm_id, &dbl_size, shm_ptr, SHM_SIZE);
+    }
+    else {
+        // Parent process
+    }
 
     exit(EXIT_SUCCESS);
 }

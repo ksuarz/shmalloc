@@ -20,6 +20,7 @@ struct Header {
     size_t size;
     struct Header *prev, *next;
     unsigned char is_free;
+    unsigned char is_reversed;
 };
 
 typedef struct Header Header;
@@ -27,7 +28,7 @@ typedef struct Header Header;
 /**
  * Initializes values in header.
  */
-void initialize_header(Header *h, size_t size, int id);
+void initialize_header(Header *h, size_t size, unsigned char is_reversed);
 
 /**
  * Destroys the given header structure.

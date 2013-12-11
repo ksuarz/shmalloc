@@ -9,8 +9,8 @@
 void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
                 char *filename, int linenumber)
 {
-    Header *root, *first, *last, *opposite_end, *curr, *best_fit;
-    size_t free_size, best_block_size;
+    Header *root, *first, *last, *opposite_end, *curr, *first_fit;
+    size_t free_size;
 
     // Verify pointers
     if (shmptr == NULL) {
@@ -44,47 +44,55 @@ void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
     first = (Header *) shmptr;
     last = (Header *) ((char *) shmptr + shm_size - sizeof(Header));
 
+    // Calculate the root and opposite end
+    // Sizes greater than THRESHOLD are allocated from the back end
+    root = (*size > THRESHOLD) ? last : first;
+    opposite_end = (root == first) ? last : first;
+
     // Check for the first call to shmalloc()
-    if(!first || first->bitseq != BITSEQ || !last || last->bitseq != BITSEQ)
-    {
-        // Calculate the root, opposite end, and free size
-        // Sizes greater than THRESHOLD are allocated from the back end
-        root = (*size > THRESHOLD) ? last : first;
-        opposite_end = (root == first) ? last : first;
-//        free_size = shm_size - 2*sizeof(Header) - *size;
+    if(!first || first->bitseq != BITSEQ || !last || last->bitseq != BITSEQ) {
+        // TODO Race condition
 
         // Initialize
-        initialize_header(root, *size, id);
-        initialize_header(opposite_end, free_size, 0);
+        free_size = shm_size - 2*sizeof(Header) - *size;
+        initialize_header(root, *size, root == last);
+        initialize_header(opposite_end, free_size, root != last);
 
-        // Allocate memory and then exit
+        // Lock the mutexes, just in case!
+        pthread_mutex_lock(&first->mutex);
+        pthread_mutex_lock(&last->mutex);
+
+        // Mark that this is now claimed
         root->is_free = 0;
         root->refcount = 1;
 
-//        // Can we add one more header?
-//        if (free_size > sizeof(Header))
-//        {
-//            curr = (root == first) ?
-//                (Header *) ((char *) root + sizeof(Header) + *size) :
-//                (Header *) ((char *) root - *size);
-//            initialize_header(curr, )
-//        } 
-        // TODO this is wrong. But it changes depending on how we want to play
-        // this
-        return (root == first) ? root + 1 : root - 1;
-    }
-    else
-    {
-        //Lock shared memory
-        pthread_mutex_lock(&(first->mutex));
+        if (free_size > sizeof(Header)) {
+            // Make a new header after the allocated one
+            curr = (root->is_reversed) ?
+                (Header *) (char *) root - *size :
+                (Header *) (char *) root + sizeof(Header) + *size;
+            initialize_header(curr, free_size - sizeof(Header), root->is_reversed);
+            root->next = curr;
+            curr->prev = root;
+        }
 
-        //Loop through all headers to see if id already exists
-        //Also record best spot to put this new item if it does not exist
-        while(curr != NULL)
-        {
-            if(curr->id == id && !curr->is_free)
-            {
-                //Already have item with this id
+        // Finally, clean up and exit
+        pthread_mutex_unlock(&first->mutex);
+        pthread_mutex_unlock(&last->mutex);
+        return (root->is_reversed) ?
+            (char *) root - *size :
+            root + 1;
+    }
+    else {
+        // Find where we're looking, as well as the opposite end
+        curr = root;
+        while (opposite_end->next != NULL)
+            opposite_end = opposite_end->next;
+
+        // Find the next header to fit, or one already allocated
+        while(curr != NULL) {
+            if(curr->id == id && !curr->is_free) {
+                // Already have item with this id
                 curr->refcount++;
                 *size = curr->size;
 
@@ -229,22 +237,23 @@ void _shmfree(void *shmptr, char *filename, int linenumber)
 /**
  * Initializes a header with default values.
  */
-void initialize_header(Header *h, size_t size, int id)
+void initialize_header(Header *h, size_t size, unsigned char is_reversed)
 {
     //Sanity check
     if(h == NULL)
         return;
 
     h->bitseq = BITSEQ;
-    h->id = id;
+    h->id = 0;
     h->is_free = 1;
+    h->is_reversed = is_reversed;
     h->next = NULL;
     h->prev = NULL;
     h->refcount = 0;
     h->size = size;
+    pthread_mutex_init(&(h->mutex), &(h->attr));
     pthread_mutexattr_init(&(h->attr));
     pthread_mutexattr_setpshared(&(h->attr), PTHREAD_PROCESS_SHARED);
-    pthread_mutex_init(&(h->mutex), &(h->attr));
 }
 
 /*
