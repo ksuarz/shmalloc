@@ -40,7 +40,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Failed to make a key with file %s.\n", argv[1]);
         exit(EXIT_FAILURE);
     }
-    else if ((shm_id = shmget(shm_key, SHM_SIZE, IPC_CREAT)) == -1) {
+    else if ((shm_id = shmget(shm_key, SHM_SIZE, 0777 | IPC_CREAT)) == -1) {
         fprintf(stderr, "Failed to get a shared memory segment.\n");
         exit(EXIT_FAILURE);
     }
@@ -57,25 +57,25 @@ int main(int argc, char **argv) {
     // Regular use of malloc
     ptr = (double *) shmalloc(shm_id, &dbl_size, shm_ptr, SHM_SIZE);
     *ptr = 3.1415926535;
-    shmfree(ptr);
+    shmfree(ptr, SHM_SIZE);
 
     // Freeing a pointer not allocated by shmalloc
-    shmfree(&x);
-    shmfree(ptr + 1);
+    shmfree(&x, SHM_SIZE);
+    shmfree(ptr + 1, SHM_SIZE);
 
     // Double-free a pointer
     dbl_size = 2 * sizeof(double);
     ptr = (double *) shmalloc(shm_id, &dbl_size, shm_ptr, SHM_SIZE);
-    shmfree(ptr);
-    shmfree(ptr);
+    shmfree(ptr, SHM_SIZE);
+    shmfree(ptr, SHM_SIZE);
 
     // Free, alloc, free, alloc should cause no error
     dbl_size = 5 * sizeof(double);
     ptr = (double *) shmalloc(shm_id, &dbl_size, shm_ptr, SHM_SIZE);
-    shmfree(ptr);
+    shmfree(ptr, SHM_SIZE);
     dbl_size = 7 * sizeof(double);
     ptr = (double *) shmalloc(shm_id, &dbl_size, shm_ptr, SHM_SIZE);
-    shmfree(ptr);
+    shmfree(ptr, SHM_SIZE);
 
     // Tests - multiple processes
 //    int pid;
