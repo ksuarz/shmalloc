@@ -3,10 +3,16 @@
 
 #include <pthread.h>
 
+// Useful constants
 #define BITSEQ 1111111
+#define MUTEXSEQ 1010101
 #define THRESHOLD 1024
+
+// Macros for allocation, freeing, etc.
 #define shmalloc(i, s, p, sz) _shmalloc(i, s, p, sz, __FILE__, __LINE__)
 #define shmfree( ptr ) _shmfree(ptr, __FILE__, __LINE__)
+#define MAX(x, y) ((x) > (y) ? (x) : (y))
+#define MIN(x, y) ((x) > (y) ? (y) : (x))
 
 /**
  * Header for managing allocated memory.
@@ -15,20 +21,33 @@ struct Header {
     int bitseq;
     int id;
     int refcount;
-    pthread_mutex_t mutex;
-    pthread_mutexattr_t attr;
     size_t size;
     struct Header *prev, *next;
     unsigned char is_free;
-    unsigned char is_reversed;
 };
 
 typedef struct Header Header;
 
 /**
+ * A mutex for shared memory.
+ */
+struct SharedMutex {
+    pthread_mutex_t mutex;
+    pthread_mutexattr_t attr;
+    int bitseq;
+}
+
+typedef struct SharedMutex SharedMutex;
+
+/**
+ * The default overhead for allocating one chunk of memory via shmalloc.
+ */
+size_t SHMALLOC_MIN_OVERHEAD = 2*sizeof(Header) + sizeof(SharedMutex);
+
+/**
  * Initializes values in header.
  */
-void initialize_header(Header *h, size_t size, unsigned char is_reversed);
+void initialize_header(Header *h, size_t size);
 
 /**
  * Destroys the given header structure.

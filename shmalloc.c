@@ -9,7 +9,7 @@
 void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
                 char *filename, int linenumber)
 {
-    Header *root, *first, *last, *opposite_end, *curr, *first_fit;
+    Header *root, *first, *last, *opposite_end, *curr, *best_fit;
     size_t free_size;
 
     // Verify pointers
@@ -29,19 +29,19 @@ void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
         return NULL;
     }
     if (*size < 0) {
-        fprintf(stderr, "%s, line %d: Cannot allocate a negative size of memory"
-                        " in shmalloc().\n",
-                        filename, linenumber);
+        fprintf(stderr, "%s, line %d: Cannot allocate a negative amount of "
+                        "memory in shmalloc().\n", filename, linenumber);
         return NULL;
     }
-    if (shm_size < *size + 2*sizeof(Header)) {
+    if (shm_size < *size + SHMALLOC_MIN_OVERHEAD) {
         fprintf(stderr, "%s, line %d: Insufficient memory to fulfill the memory"
                         " allocation request.\n", filename, linenumber);
         return NULL;
     }
 
+
     // Grab the first and the last
-    first = (Header *) shmptr;
+    first = (Header *) ((char *) shmptr + sizeof(SharedMutex));
     last = (Header *) ((char *) shmptr + shm_size - sizeof(Header));
 
     // Calculate the root and opposite end
@@ -50,9 +50,7 @@ void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
     opposite_end = (root == first) ? last : first;
 
     // Check for the first call to shmalloc()
-    if(!first || first->bitseq != BITSEQ || !last || last->bitseq != BITSEQ) {
-        // TODO Race condition
-
+    if (!first || first->bitseq != BITSEQ || !last || last->bitseq != BITSEQ) {
         // Initialize
         free_size = shm_size - 2*sizeof(Header) - *size;
         initialize_header(root, *size, root == last);
@@ -80,8 +78,8 @@ void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
         pthread_mutex_unlock(&first->mutex);
         pthread_mutex_unlock(&last->mutex);
         return (root->is_reversed) ?
-            (char *) root - *size :
-            root + 1;
+            (void *) ((char *) root - *size) :
+            (void *) (root + 1);
     }
     else {
         // Find where we're looking, as well as the opposite end
@@ -89,8 +87,11 @@ void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
         while (opposite_end->next != NULL)
             opposite_end = opposite_end->next;
 
+        // Lock the minimum amount of headers possible
+        pthread_mutex_lock();
+
         // Find the next header to fit, or one already allocated
-        while(curr != NULL) {
+        while (curr != NULL) {
             if(curr->id == id && !curr->is_free) {
                 // Already have item with this id
                 curr->refcount++;
@@ -158,15 +159,31 @@ void _shmfree(void *shmptr, char *filename, int linenumber)
 {
     Header *h, *prev, *next;
 
-    // Get the associated headers
-    h = shmptr - sizeof(Header);
-
-    // Like free(3), shmfree() of a NULL pointer has no effect
+    // Verification checks
     if (shmptr == NULL) {
+        // Like free(3), shmfree() of a NULL pointer has no effect
         fprintf(stderr, "%s, line %d: Cannot free a null pointer.\n",
                         filename, linenumber);
         return;
     }
+    if (mutex == NULL) {
+        fprintf(stderr, "%s, line %d: Cannot call shmfree() when shmalloc() "
+                        "has never been called.\n",
+                        filename, linenumber);
+        return;
+    }
+    if (mutex->bitseq != bitseq) {
+        fprintf(stderr, "%s, line %d: Detected corruption of internal mutex "
+                        "managed by shmfree().\n",
+                        filename, linenumber);
+        return;
+    }
+
+    // Lock the mutex
+    pthread_mutex_lock(&mutex);
+
+    // Get the associated headers
+    h = shmptr - sizeof(Header);
 
     // Set pointers needed later for unlocking mutexes
     next = h->next;
@@ -251,54 +268,26 @@ void initialize_header(Header *h, size_t size, unsigned char is_reversed)
     h->prev = NULL;
     h->refcount = 0;
     h->size = size;
-    pthread_mutex_init(&(h->mutex), &(h->attr));
-    pthread_mutexattr_init(&(h->attr));
-    pthread_mutexattr_setpshared(&(h->attr), PTHREAD_PROCESS_SHARED);
 }
 
 /*
  * Destroys a header. Does some appropriate locking to obtain only the resources
  * we require.
+ * Note: this function assumes that the calling function has the mutex.
  */
 void destroy_header(Header *h)
 {
-    //Sanity check
+    // Sanity check
     if(h == NULL)
         return;
 
-    // Lock the mutexes we need
-    if (h->prev != NULL)
-    {
-        pthread_mutex_lock(&h->prev->mutex);
-    }
-    pthread_mutex_lock(&h->mutex);
-    if (h->next != NULL)
-    {
-        pthread_mutex_lock(&h->next->mutex);
-    }
-
-    // Critical section: adjust previous and next accordingly
-    if(h->prev != NULL)
-    {
+    if(h->prev != NULL) {
         h->prev->next = h->next;
     }
-    if(h->next != NULL)
-    {
+    if(h->next != NULL) {
         h->next->prev = h->prev;
     }
 
-    //Now the list is good, corrupt bitseq to be safe
+    // Now the list is good, corrupt bitseq to be safe
     h->bitseq += 1;
-
-    // Unlock and destroy mutex
-    if (h->prev != NULL)
-    {
-        pthread_mutex_unlock(&h->prev->mutex);
-    }
-    pthread_mutex_unlock(&h->mutex);
-    pthread_mutex_destroy(&h->mutex);
-    if (h->next != NULL)
-    {
-        pthread_mutex_unlock(&h->next->mutex);
-    }
 }
