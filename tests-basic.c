@@ -16,7 +16,7 @@ int main(int argc, char *argv[])
     printf("Allocating ptr0\n");
     ptr[0] = shmalloc(1, &size, mem, MEM_SIZE);
     printf("Freeing ptr0\n");
-    shmfree(ptr[0], MEM_SIZE);
+    shmfree(ptr[0], MEM_SIZE, mem);
 
     //Allocate 2 things
     printf("Allocating ptr0\n");
@@ -31,21 +31,21 @@ int main(int argc, char *argv[])
         return 1;
     }
     printf("Freeing ptr0\n");
-    shmfree(ptr[0], MEM_SIZE);
+    shmfree(ptr[0], MEM_SIZE, mem);
     printf("Freeing ptr1\n");
-    shmfree(ptr[1], MEM_SIZE);
+    shmfree(ptr[1], MEM_SIZE, mem);
 
     //Free something twice
     printf("Attempting to free ptr0 again\n");
-    shmfree(ptr[0], MEM_SIZE);
+    shmfree(ptr[0], MEM_SIZE, mem);
 
     //Free ptr not returned by malloc
     printf("Allocating ptr0\n");
     ptr[0] = shmalloc(1, &size, mem, MEM_SIZE);
     printf("Freeing invalid ptr\n");
-    shmfree(((char *) ptr[0] + 1), MEM_SIZE);
+    shmfree(((char *) ptr[0] + 1), MEM_SIZE, mem);
     printf("Freeing ptr0\n");
-    shmfree(ptr[0], MEM_SIZE);
+    shmfree(ptr[0], MEM_SIZE, mem);
 
     //Allocate super big thing
     printf("Allocating more than we have\n");
@@ -70,6 +70,8 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Multiple refernces did not work. Got %d, expecting 5\n", *((int *)ptr[1]));
         return 1;
     }
+    shmfree(ptr[0], MEM_SIZE, mem);
+    shmfree(ptr[1], MEM_SIZE, mem);
 
 
 

@@ -88,7 +88,7 @@ void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
                 best_fit = curr;
             }
 
-            curr = curr->next;
+            curr = (Header *) offset2ptr(curr->next, shmptr);
         }
 
         //Did not find existing entry
@@ -117,12 +117,12 @@ void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
             initialize_header(curr, (size_t)((char *)free_size - best_fit->size - sizeof(Header)), -1, 0);
 
             //Adjust pointers
-            curr->prev = best_fit;
+            curr->prev = ptr2offset(best_fit, shmptr);
             curr->next = best_fit->next;
-            best_fit->next = curr;
-            if(best_fit->next != NULL)
+            best_fit->next = ptr2offset(curr, shmptr);
+            if(best_fit->next != -1)
             {
-                best_fit->next->prev = curr;
+                ((Header *)offset2ptr(best_fit->next, shmptr))->prev = ptr2offset(curr, shmptr);
             }
         }
 
@@ -134,7 +134,7 @@ void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
 /*
  * Frees an object in shared memory
  */
-void _shmfree(void *shmptr, size_t shm_size, char *filename, int linenumber)
+void _shmfree(void *shmptr, size_t shm_size, void *shm_ptr, char *filename, int linenumber)
 {
     Header *h, *first;
     if (shmptr == NULL) {
@@ -161,9 +161,9 @@ void _shmfree(void *shmptr, size_t shm_size, char *filename, int linenumber)
     }
 
     //LOCK EVERYTHING
-    while(first->prev != NULL)
+    while(first->prev != -1)
     {
-        first = first->prev;
+        first = offset2ptr(first->prev, shm_ptr);
     }
     pthread_mutex_lock(&(first->mutex));
 
@@ -171,7 +171,7 @@ void _shmfree(void *shmptr, size_t shm_size, char *filename, int linenumber)
     if(--(h->refcount) <= 0)
     {
         //Adjust our size
-        if(h->next != NULL)
+        if(h->next != -1)
         {
             h->size = (char *)h->next - (char *)h - sizeof(Header);
         }
@@ -184,15 +184,15 @@ void _shmfree(void *shmptr, size_t shm_size, char *filename, int linenumber)
         if(h != first) {
 
             /*Check if we can delete ourselves or our next to free up space*/
-            if(h->next != NULL && h->next->is_free)
+            if(h->next != -1 && ((Header *) offset2ptr(h->next, shm_ptr))->is_free)
             {
-                h->size += h->next->size + sizeof(Header);
-                destroy_header(h->next);
+                h->size += ((Header *) offset2ptr(h->next, shm_ptr))->size + sizeof(Header);
+                destroy_header((Header *)offset2ptr(h->next, shm_ptr), shm_ptr);
             }
-            if(h->prev != NULL && h->prev->is_free)
+            if(h->prev != -1 && ((Header *) offset2ptr(h->prev, shm_ptr))->is_free)
             {
-                h->prev->size += h->size + sizeof(Header);
-                destroy_header(h);
+                ((Header *) offset2ptr(h->prev, shm_ptr))->size += h->size + sizeof(Header);
+                destroy_header(h, shm_ptr);
                 h = NULL;
             }
         }
@@ -213,8 +213,8 @@ void initialize_header(Header *h, size_t size, int id, unsigned char is_first)
     if(h == NULL)
         return;
 
-    h->prev = NULL;
-    h->next = NULL;
+    h->prev = -1;
+    h->next = -1;
     h->size = size;
     h->refcount = 0;
     h->id = id;
@@ -237,20 +237,20 @@ void initialize_header(Header *h, size_t size, int id, unsigned char is_first)
  * Destroys a header struct
  * Assumes that if a mutex exists, it is locked
  */
-void destroy_header(Header *h)
+void destroy_header(Header *h, void *shm_ptr)
 {
     //Sanity check
     if(h == NULL)
         return;
 
     //Adjust previous and next accordingly
-    if(h->prev != NULL)
+    if(h->prev != -1)
     {
-        h->prev->next = h->next;
+        ((Header *)offset2ptr(h->prev, shm_ptr))->next = h->next;
     }
-    if(h->next != NULL)
+    if(h->next != -1)
     {
-        h->next->prev = h->prev;
+        ((Header *)offset2ptr(h->next, shm_ptr))->prev = h->prev;
     }
 
     //Now the list is good, corrupt bitseq to be safe
@@ -263,4 +263,14 @@ void destroy_header(Header *h)
         pthread_mutex_destroy(&(h->mutex));
     }
 
+}
+
+long ptr2offset(void *ptr, void *shm_ptr)
+{
+    return ptr - shm_ptr;
+}
+
+void *offset2ptr(long offset, void *shm_ptr)
+{
+    return (char *)shm_ptr + offset;
 }
