@@ -48,3 +48,9 @@ Or something like that.
 
 For the write-up:
 - Don't forget a quick paragraph oh why we didn't do `shmrealloc`
+
+
+
+
+SHMAT GIVES YOU A MEMORY SEGMENT FULL OF ZEROES
+Expectation: get malloc in shared memory to work AT ALL
