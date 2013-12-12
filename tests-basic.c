@@ -60,9 +60,11 @@ int main(int argc, char *argv[])
     //Two references
     printf("Testing multiple references\n");
     size = sizeof(int);
+    printf("Allocating first\n");
     ptr[0] = shmalloc(9, &size, mem, MEM_SIZE);
     *((int *)ptr[0]) = 5;
 
+    printf("Getting second\n");
     ptr[1] = shmalloc(9, &size, mem, MEM_SIZE);
 
     if(*((int *)ptr[1]) != 5)
@@ -70,7 +72,9 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Multiple refernces did not work. Got %d, expecting 5\n", *((int *)ptr[1]));
         return 1;
     }
+    printf("Freeing first\n");
     shmfree(ptr[0], MEM_SIZE, mem);
+    printf("Freeing second\n");
     shmfree(ptr[1], MEM_SIZE, mem);
 
 
