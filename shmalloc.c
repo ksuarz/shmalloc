@@ -267,6 +267,7 @@ void destroy_header(Header *h, void *shm_ptr)
 
 long ptr2offset(void *ptr, void *shm_ptr)
 {
+    if(ptr == NULL) return -1;
     return ptr - shm_ptr;
 }
 
