@@ -57,25 +57,25 @@ int main(int argc, char **argv) {
     // Regular use of malloc
     ptr = (double *) shmalloc(shm_id, &dbl_size, shm_ptr, SHM_SIZE);
     *ptr = 3.1415926535;
-    shmfree(ptr, SHM_SIZE);
+    shmfree(ptr, SHM_SIZE, shm_ptr);
 
     // Freeing a pointer not allocated by shmalloc
-    shmfree(&x, SHM_SIZE);
-    shmfree(ptr + 1, SHM_SIZE);
+    shmfree(&x, SHM_SIZE, shm_ptr);
+    shmfree(ptr + 1, SHM_SIZE, shm_ptr);
 
     // Double-free a pointer
     dbl_size = 2 * sizeof(double);
     ptr = (double *) shmalloc(shm_id, &dbl_size, shm_ptr, SHM_SIZE);
-    shmfree(ptr, SHM_SIZE);
-    shmfree(ptr, SHM_SIZE);
+    shmfree(ptr, SHM_SIZE, shm_ptr);
+    shmfree(ptr, SHM_SIZE, shm_ptr);
 
     // Free, alloc, free, alloc should cause no error
     dbl_size = 5 * sizeof(double);
     ptr = (double *) shmalloc(shm_id, &dbl_size, shm_ptr, SHM_SIZE);
-    shmfree(ptr, SHM_SIZE);
+    shmfree(ptr, SHM_SIZE, shm_ptr);
     dbl_size = 7 * sizeof(double);
     ptr = (double *) shmalloc(shm_id, &dbl_size, shm_ptr, SHM_SIZE);
-    shmfree(ptr, SHM_SIZE);
+    shmfree(ptr, SHM_SIZE, shm_ptr);
 
     // Tests - multiple processes
 //    int pid;
