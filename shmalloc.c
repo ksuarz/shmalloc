@@ -117,16 +117,15 @@ void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
         {
             curr = (Header *) ((char *) best_fit + best_fit->size + sizeof(Header));
             initialize_header(curr, (size_t)((char *)free_size - best_fit->size - sizeof(Header)), -1, 0);
-            printf("Creating a new header with bit sequence %d for file %s at line %d\n", curr->bitseq, filename, linenumber);
 
             //Adjust pointers
             curr->prev = ptr2offset(best_fit, shmptr);
             curr->next = best_fit->next;
-            best_fit->next = ptr2offset(curr, shmptr);
             if(best_fit->next != -1)
             {
                 ((Header *)offset2ptr(best_fit->next, shmptr))->prev = ptr2offset(curr, shmptr);
             }
+            best_fit->next = ptr2offset(curr, shmptr);
         }
         else {
             best_fit->size = free_size;
@@ -187,18 +186,15 @@ void _shmfree(void *shmptr, size_t shm_size, void *shm_ptr, char *filename, int 
         /*Check if we can delete our next to free up space*/
         if(h->next != -1 && ((Header *) offset2ptr(h->next, shm_ptr))->is_free)
         {
-            printf("Delting next\n");
             h->size += (size_t) ((char *)((Header *) offset2ptr(h->next, shm_ptr))->size + sizeof(Header));
             destroy_header((Header *)offset2ptr(h->next, shm_ptr), shm_ptr);
         }
 
         //Don't delete the first entry
         if(h != first) {
-            printf("not the first\n");
 
             if(h->prev != -1 && ((Header *) offset2ptr(h->prev, shm_ptr))->is_free)
             {
-                printf("deleting ourself\n");
                 ((Header *) offset2ptr(h->prev, shm_ptr))->size += (size_t) ((char *)h->size + sizeof(Header));
                 destroy_header(h, shm_ptr);
                 h = NULL;
@@ -255,6 +251,7 @@ void destroy_header(Header *h, void *shm_ptr)
     if(h->prev != -1)
     {
         ((Header *)offset2ptr(h->prev, shm_ptr))->next = h->next;
+        printf("prev next is %p\n", ((Header *)offset2ptr(h->prev, shm_ptr)));
     }
     if(h->next != -1)
     {

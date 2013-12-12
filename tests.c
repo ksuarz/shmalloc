@@ -70,17 +70,6 @@ int main(int argc, char **argv) {
     dbl_size = 5 * sizeof(double);
     ptr = (double *) shmalloc(10, &dbl_size, shm_ptr, SHM_SIZE);
     shmfree(ptr, SHM_SIZE, shm_ptr);
-    //print out all the headers
-    Header *h = (Header *) shm_ptr;
-    int i = 0;
-    while(h != NULL)
-    {
-        printf("Header %d: bitseqL %d, id: %d, refcount %d, size %lu, prev: %ld, next: %ld, free: %d, addr: %p\n",
-                i, h->bitseq, h->id, h->refcount, (unsigned long) h->size, h->prev, h->next, h->is_free, h);
-        h = offset2ptr(h->next, shm_ptr);
-        i++;
-    }
-
 
     dbl_size = 5 * sizeof(double);
     ptr = (double *) shmalloc(10, &dbl_size, shm_ptr, SHM_SIZE);
