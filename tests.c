@@ -40,7 +40,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Failed to make a key with file %s.\n", argv[1]);
         exit(EXIT_FAILURE);
     }
-    else if ((shm_id = shmget(shm_key, SHM_SIZE, 0777 | IPC_CREAT)) == -1) {
+    else if ((shm_id = shmget(shm_key, SHM_SIZE, 0777 | IPC_CREAT | IPC_EXCL)) == -1) {
         fprintf(stderr, "Failed to get a shared memory segment.\n");
         exit(EXIT_FAILURE);
     }
@@ -55,26 +55,43 @@ int main(int argc, char **argv) {
     size_t dbl_size = sizeof(double);
 
     // Regular use of malloc
-    ptr = (double *) shmalloc(shm_id, &dbl_size, shm_ptr, SHM_SIZE);
+    printf("Regular use of malloc\n");
+    ptr = (double *) shmalloc(3, &dbl_size, shm_ptr, SHM_SIZE);
     *ptr = 3.1415926535;
     shmfree(ptr, SHM_SIZE, shm_ptr);
 
     // Freeing a pointer not allocated by shmalloc
+    printf("Freeing pointers not allocated by shmalloc\n");
     shmfree(&x, SHM_SIZE, shm_ptr);
     shmfree(ptr + 1, SHM_SIZE, shm_ptr);
 
+    // Free, alloc, free, alloc should cause no error
+    printf("Allocs and frees. No expected error\n");
+    dbl_size = 5 * sizeof(double);
+    ptr = (double *) shmalloc(10, &dbl_size, shm_ptr, SHM_SIZE);
+    shmfree(ptr, SHM_SIZE, shm_ptr);
+    //print out all the headers
+    Header *h = (Header *) shm_ptr;
+    int i = 0;
+    while(h != NULL)
+    {
+        printf("Header %d: bitseqL %d, id: %d, refcount %d, size %lu, prev: %ld, next: %ld, free: %d, addr: %p\n",
+                i, h->bitseq, h->id, h->refcount, (unsigned long) h->size, h->prev, h->next, h->is_free, h);
+        h = offset2ptr(h->next, shm_ptr);
+        i++;
+    }
+
+
+    dbl_size = 5 * sizeof(double);
+    ptr = (double *) shmalloc(10, &dbl_size, shm_ptr, SHM_SIZE);
+    printf("ptr is %p\n", (char *)ptr - sizeof(Header));
+    shmfree(ptr, SHM_SIZE, shm_ptr);
+
     // Double-free a pointer
+    printf("Double freeing a ptr\n");
     dbl_size = 2 * sizeof(double);
     ptr = (double *) shmalloc(shm_id, &dbl_size, shm_ptr, SHM_SIZE);
     shmfree(ptr, SHM_SIZE, shm_ptr);
-    shmfree(ptr, SHM_SIZE, shm_ptr);
-
-    // Free, alloc, free, alloc should cause no error
-    dbl_size = 5 * sizeof(double);
-    ptr = (double *) shmalloc(shm_id, &dbl_size, shm_ptr, SHM_SIZE);
-    shmfree(ptr, SHM_SIZE, shm_ptr);
-    dbl_size = 7 * sizeof(double);
-    ptr = (double *) shmalloc(shm_id, &dbl_size, shm_ptr, SHM_SIZE);
     shmfree(ptr, SHM_SIZE, shm_ptr);
 
     // Tests - multiple processes

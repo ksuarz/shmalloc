@@ -45,6 +45,7 @@ void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
     // First time calling shmalloc
     if(!first || first->bitseq != BITSEQ)
     {
+        printf("id is %d\n", id);
         initialize_header(first, *size, id, 1);
         first->is_free = 0;
         first->refcount++;
@@ -150,7 +151,7 @@ void _shmfree(void *shmptr, size_t shm_size, void *shm_ptr, char *filename, int 
     }
 
     //Get the associated header
-    first = h = ((Header *) shmptr) - 1;
+    h = ((Header *) shmptr) - 1;
 
     // More verification checks
     if(h->bitseq != BITSEQ) {
@@ -183,18 +184,22 @@ void _shmfree(void *shmptr, size_t shm_size, void *shm_ptr, char *filename, int 
             h->size = (char *) shm_size - (char *)h - sizeof(Header);
         }
 
+        /*Check if we can delete our next to free up space*/
+        if(h->next != -1 && ((Header *) offset2ptr(h->next, shm_ptr))->is_free)
+        {
+            printf("Delting next\n");
+            h->size += (size_t) ((char *)((Header *) offset2ptr(h->next, shm_ptr))->size + sizeof(Header));
+            destroy_header((Header *)offset2ptr(h->next, shm_ptr), shm_ptr);
+        }
+
         //Don't delete the first entry
         if(h != first) {
+            printf("not the first\n");
 
-            /*Check if we can delete ourselves or our next to free up space*/
-            if(h->next != -1 && ((Header *) offset2ptr(h->next, shm_ptr))->is_free)
-            {
-                h->size += ((Header *) offset2ptr(h->next, shm_ptr))->size + sizeof(Header);
-                destroy_header((Header *)offset2ptr(h->next, shm_ptr), shm_ptr);
-            }
             if(h->prev != -1 && ((Header *) offset2ptr(h->prev, shm_ptr))->is_free)
             {
-                ((Header *) offset2ptr(h->prev, shm_ptr))->size += h->size + sizeof(Header);
+                printf("deleting ourself\n");
+                ((Header *) offset2ptr(h->prev, shm_ptr))->size += (size_t) ((char *)h->size + sizeof(Header));
                 destroy_header(h, shm_ptr);
                 h = NULL;
             }
@@ -261,12 +266,16 @@ void destroy_header(Header *h, void *shm_ptr)
     h->next = -1;
     h->prev = -1;
 
+    //Screw up ptrs
+    h->next = -1;
+    h->prev = -1;
+
     //Unlock and destroy mutex
-    if(h->has_mutex)
+/*    if(h->has_mutex)
     {
         pthread_mutex_unlock(&(h->mutex));
         pthread_mutex_destroy(&(h->mutex));
-    }
+    }*/
 
 }
 

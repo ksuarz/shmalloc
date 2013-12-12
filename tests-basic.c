@@ -77,6 +77,16 @@ int main(int argc, char *argv[])
     printf("Freeing second\n");
     shmfree(ptr[1], MEM_SIZE, mem);
 
+    //Alloc free alloc free
+    printf("Allocating ptr0\n");
+    ptr[0] = shmalloc(50, &size, mem, MEM_SIZE);
+    printf("Freeing ptr0\n");
+    shmfree(ptr[0], MEM_SIZE, mem);
+    printf("Allocating ptr0\n");
+    ptr[0] = shmalloc(50, &size, mem, MEM_SIZE);
+    printf("Freeing ptr0\n");
+    shmfree(ptr[0], MEM_SIZE, mem);
+
 
 
     return 0;
