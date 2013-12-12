@@ -55,6 +55,7 @@ void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
             curr = (Header *)((char *)shmptr + sizeof(Header) + *size);
             initialize_header(curr, free_size, -1, 0);
             first->next = ptr2offset(curr, shmptr);
+            curr->prev = ptr2offset(first, shmptr)
         }
 
         return (first + 1);
@@ -111,7 +112,7 @@ void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
         best_fit->is_free = 0;
 
         //Check if there is enough room to make another header
-        if((free_size - best_fit->size) > 0)
+        if((free_size - best_fit->size) > sizeof(Header))
         {
             curr = (Header *) ((char *) best_fit + best_fit->size + sizeof(Header));
             initialize_header(curr, (size_t)((char *)free_size - best_fit->size - sizeof(Header)), -1, 0);
@@ -124,6 +125,9 @@ void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
             {
                 ((Header *)offset2ptr(best_fit->next, shmptr))->prev = ptr2offset(curr, shmptr);
             }
+        }
+        else {
+            best_fit->size = free_size;
         }
 
         pthread_mutex_unlock(&(first->mutex));
@@ -150,8 +154,8 @@ void _shmfree(void *shmptr, size_t shm_size, void *shm_ptr, char *filename, int 
     // More verification checks
     if(h->bitseq != BITSEQ) {
         fprintf(stderr, "%s, line %d: Attempted to free a pointer not allocated"
-                        "by shmalloc() or a segment of memory has been "
-                        "corrupted. Check your memory accesses.()\n",
+                        " by shmalloc() or corruption of internal memory has "
+                        "occurred. Check your memory accesses.()\n",
                         filename, linenumber);
         return;
     }
