@@ -171,7 +171,7 @@ void _shmfree(void *shmptr, size_t shm_size, void *shm_ptr, char *filename, int 
         //Adjust our size
         if(h->next != -1)
         {
-            h->size = (char *)h->next - (char *)h - sizeof(Header);
+            h->size = (char *)offset2ptr(h->next, shm_ptr) - (char *)h - sizeof(Header);
         }
         else
         {
