@@ -40,8 +40,7 @@ void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
     }
 
     // Find the first header
-    first = curr = (Header *) shmptr;
-    best_fit = NULL;
+    first = curr = (Header *) shmptr; best_fit = NULL;
 
     // First time calling shmalloc
     if(!first || first->bitseq != BITSEQ)
@@ -55,6 +54,7 @@ void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
         {
             curr = (Header *)((char *)shmptr + sizeof(Header) + *size);
             initialize_header(curr, free_size, -1, 0);
+            first->next = ptr2offset(curr, shmptr);
         }
 
         return (first + 1);
@@ -162,10 +162,7 @@ void _shmfree(void *shmptr, size_t shm_size, void *shm_ptr, char *filename, int 
     }
 
     //LOCK EVERYTHING
-    while(first->prev != -1)
-    {
-        first = offset2ptr(first->prev, shm_ptr);
-    }
+    first = (Header *) shm_ptr;
     pthread_mutex_lock(&(first->mutex));
 
     //If we are the last reference
