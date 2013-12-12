@@ -116,6 +116,7 @@ void *_shmalloc(int id, size_t *size, void *shmptr, size_t shm_size,
         {
             curr = (Header *) ((char *) best_fit + best_fit->size + sizeof(Header));
             initialize_header(curr, (size_t)((char *)free_size - best_fit->size - sizeof(Header)), -1, 0);
+            printf("Creating a new header with bit sequence %d for file %s at line %d\n", curr->bitseq, filename, linenumber);
 
             //Adjust pointers
             curr->prev = ptr2offset(best_fit, shmptr);
@@ -257,6 +258,8 @@ void destroy_header(Header *h, void *shm_ptr)
 
     //Now the list is good, corrupt bitseq to be safe
     h->bitseq += 1;
+    h->next = -1;
+    h->prev = -1;
 
     //Unlock and destroy mutex
     if(h->has_mutex)

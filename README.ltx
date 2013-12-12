@@ -14,9 +14,11 @@ version of their shared memory counterparts \verb/shmalloc()/ and
 \verb/shmfree()/. Obviously, since they all deal with shared memory, the
 functions are multiprocess-safe.
 
+Our functions all assume that 
+
 \subsection*{Application Programming Interface}
 \subsubsection*{shmalloc}
-Unlike regular \verb/malloc(3)/, our \verb/shmalloc()/ takes three arguments:
+Unlike regular \verb/malloc(3)/, our \verb/shmalloc()/ takes four arguments:
 
 \begin{itemize}
 \item
@@ -24,8 +26,10 @@ Unlike regular \verb/malloc(3)/, our \verb/shmalloc()/ takes three arguments:
 \item
     \verb/size/ - A pointer to the size of the desired block of memory to
     allocate.
+\item 
+    \verb/shmptr/ - A pointer to the start of the attached shared memory block.
 \item
-    \verb/shm_size/ - The size of the attached shared memory block.
+    \verb/shmsize/ - The size of the attached shared memory block.
 \end{itemize}
 
 The ID number allows the user to coordinate what memory is shared between
@@ -36,6 +40,10 @@ matches the argument. If it doesn't exist, it creates the segment of size
 caller's \verb/size/ to reflect the actual size of the allocated chunk and
 returns the pointer found.
 
+We require \verb/shmptr/ because segments within the shared memory can be
+identified by offsets, not addresses. (The address of \verb/shmptr/ will vary
+between processes, but the offsets between the data are always constant.)
+
 \verb/shmsize/ is the size of the entire shared memory segment, which is assumed
 to have been obtained via \verb/shmget(3)/ and \verb/shmat(3)/. This parameter
 is required in order for \verb/shmalloc()/ to keep track of how much free space
@@ -44,12 +52,14 @@ necessity leads to a clumsier interface for the user, as the same size must
 constantly be passed into every call.
 
 \subsubsection*{shmfree}
-Luckily, \verb/shmfree()/ takes two arguments:
+Our \verb/shmfree()/ takes three arguments:
 \begin{itemize}
 \item
     \verb/ptr/ - The pointer to free.
 \item
     \verb/shmsize/ - The size of the shared memory segment.
+\item
+    \verb/shmptr/ - A pointer to the start of the shared memory segment.
 \end{itemize}
 
 This frees the memory associated with the given pointer. Since multiple
@@ -90,13 +100,19 @@ next header block, effectively creating a linked list. There is one global mutex
 active for the shared memory; every time we update the header list, we lock the
 mutex to maintain data integrity.
 
-There is a second, more complicated version of \verb/shmalloc()/, hereby
-referred to as \verb/shmalloc2()/. In this version we attempted a more
-sophisticated locking mechanism, with a lock on each header, to achieve finer
-granularity. In order to combat fragmentation, we also planned a ``two-pronged''
-linked list of headers - allocated chunks larger than a certain threshold go on
-one end, while smaller chunks are allocated at the other end. However, there are
-many, many complicated issues with this scheme as detailed below.
+Since the same shared memory segment can be attached by different processes to
+different locations in their virtual address space, we use offsets to manage
+data instead of pointers to actual addresses. For ease of use, we have a few
+internal functions \verb/offset2ptr/ and \verb/ptr2offset/ to help with the
+arithmetic involved.
+
+There is a second, more complicated version of \verb/shmalloc()/ that we
+attempted. In this version we attempted a more sophisticated locking mechanism,
+with a lock on each header, to achieve finer granularity. In order to combat
+fragmentation, we also planned a ``two-pronged'' linked list of headers -
+allocated chunks larger than a certain threshold go on one end, while smaller
+chunks are allocated at the other end. However, there are many, many complicated
+issues with this scheme as detailed below in the \emph{Pitfalls} section.
 
 \section*{Analysis}
 \subsection*{Runtime Analysis}
@@ -164,15 +180,16 @@ Our \verb/shmfree()/ catches the following errors:
 \item
     Freeing a pointer more times than it has been allocated.
 \item
+    Freeing a pointer that has not been allocated by \verb/shmalloc()/.
+\item
     Freeing a \verb/NULL/ pointer is allowed but still prints a warning message.
 \end{itemize}
 
 \subsection*{Fragmentation}
 We didn't have a chance to analyze some crazy fragmentation problems. Our
 best-fit algorithm is still prone to both internal and external fragmentation.
-(Even if the sophisticated two-sided allocation scheme for \verb/shmalloc2()/
-succeeded, it would be difficult to tell if the fragmentation overall was
-reduced.)
+(Even if the sophisticated two-sided allocation scheme succeeded, it would be
+difficult to tell if the fragmentation overall was reduced.)
 
 The problem with analyzing fragmentation is that attempting to measure the
 amount of fragmentation in the internal data structure will alter it, however
@@ -183,27 +200,28 @@ we could add another field to the headers that indicate the amount of wasted
 space. However, this extra field might have altered the true amount had it not
 been present.
 
-\section*{shmalloc2 and Other Issues}
-\verb/shmalloc2()/ attempted to incorporate finer granularity and the
-double-sided allocation scheme. However, the granularity will be extremely
-difficult - if not impossible - to accomplish. Consider a call to
+\section*{Pitfalls}
+We attempted to incorporate finer granularity and the double-sided allocation
+scheme in phase two of \verb/shmalloc()/. However, the granularity will be
+extremely difficult - if not impossible - to accomplish. Consider a call to
 \verb/shmalloc()/. We must search the linked list first for an existing chunk
 with the same ID number, and we also look for a header that satisfies our best
 fit. If we want to remember these pointers for after the traversal, we must lock
 their mutexes. However, because multiple locks in several non-adjacent parts of
 the list have now been acquired, it may result in deadlock when another process
 attempts to modify another part of the list but still requires a particular
-combination of mutexes. Also, two different processes modifying the list may
-modify sizes of headers in a way that leads to an inconsistent data structure
-despite the use of mutexes. For this reason, it's probably better to stick with
+combination of mutexes. For this reason, it's probably better to stick with
 a global mutex for the entire shared segment.
 
 Another issue is the choice of bit sequence. For back-to-back runs of the
 testing program, we happen to get and attach to the shared memory segment with
 the same junk data from the previous run. This fools \verb/shmalloc()/ into
 thinking that something has been initialized when in fact its data is useless.
-Randomizing the bit sequence at the start of every invocation could help, but
-this is still prone to the occasional error.
+Longer bit sequences could help, but there is still no guarantee that using this
+will always be error-free, even when all due care has been taken by the user.
+
+Finally, the elegance of the memory-management API is lost with our
+shared-memory allocation. 
 
 \end{document}
 
