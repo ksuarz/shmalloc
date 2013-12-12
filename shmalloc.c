@@ -272,5 +272,6 @@ long ptr2offset(void *ptr, void *shm_ptr)
 
 void *offset2ptr(long offset, void *shm_ptr)
 {
+    if(offset == -1) return NULL;
     return (char *)shm_ptr + offset;
 }
