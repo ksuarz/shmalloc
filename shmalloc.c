@@ -149,8 +149,9 @@ void _shmfree(void *shmptr, size_t shm_size, void *shm_ptr, char *filename, int 
 
     // More verification checks
     if(h->bitseq != BITSEQ) {
-        fprintf(stderr, "%s, line %d: shmfree() detects corruption of internal "
-                        "data structures. Check your memory accesses.\n",
+        fprintf(stderr, "%s, line %d: Attempted to free a pointer not allocated"
+                        "by shmalloc() or a segment of memory has been "
+                        "corrupted. Check your memory accesses.()\n",
                         filename, linenumber);
         return;
     }
