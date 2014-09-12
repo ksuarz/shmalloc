@@ -8,105 +8,104 @@
 
 \section*{Overview}
 This is our implementation of C memory management functions in a shared memory
-setting. Drawing from the ``big four'' memory functions \verb/malloc()/,
-\verb/calloc()/, \verb/realloc()/, and \verb/free()/, we present a simple
-version of their shared memory counterparts \verb/shmalloc()/ and
-\verb/shmfree()/. Obviously, since they all deal with shared memory, the
+setting. Drawing from the ``big four'' memory functions \texttt{malloc()},
+\texttt{calloc()}, \texttt{realloc()}, and \texttt{free()}, we present a simple
+version of their shared memory counterparts \texttt{shmalloc()} and
+\texttt{shmfree()}. Obviously, since they all deal with shared memory, the
 functions are multiprocess-safe.
-
-Our functions all assume that 
 
 \subsection*{Application Programming Interface}
 \subsubsection*{shmalloc}
-Unlike regular \verb/malloc(3)/, our \verb/shmalloc()/ takes four arguments:
+Unlike regular \texttt{malloc(3)}, our \texttt{shmalloc()} takes four arguments:
 
 \begin{itemize}
 \item
-    \verb/id/ - An application-specific ID number.
+    \texttt{id} - An application-specific ID number.
 \item
-    \verb/size/ - A pointer to the size of the desired block of memory to
+    \texttt{size} - A pointer to the size of the desired block of memory to
     allocate.
 \item 
-    \verb/shmptr/ - A pointer to the start of the attached shared memory block.
+    \texttt{shmptr} - A pointer to the start of the attached shared memory
+    block.
 \item
-    \verb/shmsize/ - The size of the attached shared memory block.
+    \texttt{shmsize} - The size of the attached shared memory block.
 \end{itemize}
 
 The ID number allows the user to coordinate what memory is shared between
-multiple processes and how to interpret it. When \verb/shmalloc/ is called, it
-first searches the already-allocated space for a chunk of memory whose \verb/id/
-matches the argument. If it doesn't exist, it creates the segment of size
-\verb/size/ and returns a pointer to it. If it already exists, it updates the
-caller's \verb/size/ to reflect the actual size of the allocated chunk and
+multiple processes and how to interpret it. When \texttt{shmalloc} is called, it
+first searches the already-allocated space for a chunk of memory whose
+\texttt{id} matches the argument. If it doesn't exist, it creates the segment of
+size \texttt{size} and returns a pointer to it. If it already exists, it updates
+the caller's \texttt{size} to reflect the actual size of the allocated chunk and
 returns the pointer found.
 
-We require \verb/shmptr/ because segments within the shared memory can be
-identified by offsets, not addresses. (The address of \verb/shmptr/ will vary
+We require \texttt{shmptr} because segments within the shared memory can be
+identified by offsets, not addresses. (The address of \texttt{shmptr} will vary
 between processes, but the offsets between the data are always constant.)
 
-\verb/shmsize/ is the size of the entire shared memory segment, which is assumed
-to have been obtained via \verb/shmget(3)/ and \verb/shmat(3)/. This parameter
-is required in order for \verb/shmalloc()/ to keep track of how much free space
-is left inside of the segment and allows it to manage it. Obviously, this
-necessity leads to a clumsier interface for the user, as the same size must
+\texttt{shmsize} is the size of the entire shared memory segment, which is
+assumed to have been obtained via \texttt{shmget(3)} and \texttt{shmat(3)}. This
+parameter is required in order for \texttt{shmalloc()} to keep track of how much
+free space is left inside of the segment and allows it to manage it. Obviously,
+this necessity leads to a clumsier interface for the user, as the same size must
 constantly be passed into every call.
 
 \subsubsection*{shmfree}
-Our \verb/shmfree()/ takes three arguments:
+Our \texttt{shmfree()} takes three arguments:
 \begin{itemize}
 \item
-    \verb/ptr/ - The pointer to free.
+    \texttt{ptr} - The pointer to free.
 \item
-    \verb/shmsize/ - The size of the shared memory segment.
+    \texttt{shmsize} - The size of the shared memory segment.
 \item
-    \verb/shmptr/ - A pointer to the start of the shared memory segment.
+    \texttt{shmptr} - A pointer to the start of the shared memory segment.
 \end{itemize}
 
 This frees the memory associated with the given pointer. Since multiple
 processes may free the pointer at different times, a reference count is kept.
-The memory is actually freed only after the number of calls to \verb/shmfree()/
-match the number of calls to \verb/shmalloc()/ for the same segment. Any process
-that calls \verb/shmfree()/ on a pointer should treat that pointer as unsafe for
-use in the future.
+The memory is actually freed only after the number of calls to
+\texttt{shmfree()} match the number of calls to \texttt{shmalloc()} for the same
+segment. Any process that calls \texttt{shmfree()} on a pointer should treat
+that pointer as unsafe for use in the future.
 
-\verb/shmsize/ is required for \verb/shmfree()/ to correctly update its internal
-data structures. Without it, it would be impossible to keep track of memory
-sizes as segments are allocated and freed.
+\texttt{shmsize} is required for \texttt{shmfree()} to correctly update its
+internal data structures. Without it, it would be impossible to keep track of
+memory sizes as segments are allocated and freed.
 
 \subsection*{``Missing'' Functions}
 \subsubsection*{shmcalloc}
-Our version of \verb/shmalloc()/ suffices as a proof-of-concept;
-\verb/shmcalloc()/ would simply call \verb/shmalloc/ and ensure that the memory
-is wiped clean before returning it to the user.
+Our version of \texttt{shmalloc()} suffices as a proof-of-concept;
+\texttt{shmcalloc()} would simply call \texttt{shmalloc} and ensure that the
+memory is wiped clean before returning it to the user.
 
 \subsubsection*{shmrealloc}
-There is no \verb/shmrealloc()/ in our project. \verb/realloc(3)/ takes a
-pointer allocated by \verb/malloc(3)/ and changes its size. However,
+There is no \texttt{shmrealloc()} in our project. \texttt{realloc(3)} takes a
+pointer allocated by \texttt{malloc(3)} and changes its size. However,
 implementing this in shared memory leads to problems. If one process reallocates
 a chunk of memory, potentially changing its location, other processes will have
 no way of knowing that this change has occurred. One way to accomplish this is
-to have \verb/shmrealloc()/ be a blocking call - processes that reallocate the
+to have \texttt{shmrealloc()} be a blocking call - processes that reallocate the
 chunk of memory will block until \emph{all} processes decide to reallocate it.
 Since this is probably not useful for practical purposes, we have decided to
 omit it.
 
 \section*{Design}
-For our implementation, we implemented \verb/shmalloc()/ like the regular,
-non-shared version of \verb/malloc/, but now with mutexes to ensure multiprocess
-safety. We treat the shared memory as a linear block, slicing it up as we
-allocate chunks of it. A header structure precedes each allocated chunk, which
-stores information about the memory we are managing and has a pointer to the
-next header block, effectively creating a linked list. There is one global mutex
-active for the shared memory; every time we update the header list, we lock the
-mutex to maintain data integrity.
+For our implementation, we implemented \texttt{shmalloc()} like the regular,
+non-shared version of \texttt{malloc}, but now with mutexes to ensure
+multiprocess safety. We treat the shared memory as a linear block, slicing it up
+as we allocate chunks of it. A header structure precedes each allocated chunk,
+which stores information about the memory we are managing and has a pointer to
+the next header block, effectively creating a linked list. There is one global
+mutex active for the shared memory; every time we update the header list, we
+lock the mutex to maintain data integrity.
 
 Since the same shared memory segment can be attached by different processes to
 different locations in their virtual address space, we use offsets to manage
 data instead of pointers to actual addresses. For ease of use, we have a few
-internal functions \verb/offset2ptr/ and \verb/ptr2offset/ to help with the
+internal functions \texttt{offset2ptr} and \texttt{ptr2offset} to help with the
 arithmetic involved.
 
-There is a second, more complicated version of \verb/shmalloc()/ that we
+There is a second, more complicated version of \texttt{shmalloc()} that we
 attempted. In this version we attempted a more sophisticated locking mechanism,
 with a lock on each header, to achieve finer granularity. In order to combat
 fragmentation, we also planned a ``two-pronged'' linked list of headers -
@@ -116,27 +115,27 @@ issues with this scheme as detailed below in the \emph{Pitfalls} section.
 
 \section*{Analysis}
 \subsection*{Runtime Analysis}
-The memory allocation for \verb/shmalloc()/ is a best-fit algorithm. We traverse
-the entire linked list of memory headers. If we find a chunk of memory with an
-ID matching the ID of the function call, we simply modify a reference count and
-return a pointer to the already-existing memory. If no chunk was found with a
-matching ID, we create a new one. During the traversal, we also take note of
-chunks that are already free, selecting the smallest free chunk of memory that
-will successfully satisfy the request. For $n$ headers already in existence, we
-do $O(n)$ work. If no such best-fit is found, we fail, print an error, and
-return \verb/NULL/.
+The memory allocation for \texttt{shmalloc()} is a best-fit algorithm. We
+traverse the entire linked list of memory headers. If we find a chunk of memory
+with an ID matching the ID of the function call, we simply modify a reference
+count and return a pointer to the already-existing memory. If no chunk was found
+with a matching ID, we create a new one. During the traversal, we also take note
+of chunks that are already free, selecting the smallest free chunk of memory
+that will successfully satisfy the request. For $n$ headers already in
+existence, we do $O(n)$ work. If no such best-fit is found, we fail, print an
+error, and return \texttt{NULL}.
 
-Freeing a pointer with \verb/shmfree()/ is fast. Every time a process frees a
+Freeing a pointer with \texttt{shmfree()} is fast. Every time a process frees a
 chunk of memory, a reference count decreases; when it hits zero, the memory is
 freed by deleting it from the header linked list and coalescing it with adjacent
 blocks, if applicable. Since this is merely pointer arithmetic and size
 recalculation, it takes constant time ($O(1)$). The coalescing of headers also
 reduces the amount of space used for overhead and the amount of absolute work
-required by \verb/shmalloc()/, however that still remains as a linear-time
+required by \texttt{shmalloc()}, however that still remains as a linear-time
 algorithm in general.
 
 With regards to multiprocessing, it must be noted that each call to
-\verb/shmalloc()/ and \verb/shmfree()/ will block as the process attempts to
+\texttt{shmalloc()} and \texttt{shmfree()} will block as the process attempts to
 acquire the mutex and modify the internal data structure. While the waiting time
 should be relatively short, unlucky scheduling can lead to a situation where
 many processes are blocking, waiting for their turn to free or allocate more
@@ -146,12 +145,12 @@ memory.
 We have a naive version where each header contains a mutex, but only the first
 mutex in shared memory is used. This is an enormous overhead - we waste space
 for a mutex for each header created; for $n$ headers, we waste $n x$
-\verb/sizeof(Header)/ $= O(n)$ space. A better version can reduce this to a
+\texttt{sizeof(Header)} $= O(n)$ space. A better version can reduce this to a
 constant overhead for one mutex, but the code and pointer calculations will be
 slightly more complicated.
 
 \subsection*{Error-Catching}
-All error conditions detected are printed to \verb/STDERR/ with an appropriate
+All error conditions detected are printed to \texttt{STDERR} with an appropriate
 message and the file and line number in which the error occurred.
 
 To do error-catching for corruption or bad pointer accesses, we used a constant
@@ -161,28 +160,29 @@ corruption has occurred. The longer the bit sequence, the higher the chance that
 bad pointer accesses will also corrupt the bit sequence. However, this overhead
 exists in each and every header, so we restrict our bit sequence to seven bits.
 
-Our \verb/shmalloc()/ catches the following errors:
+Our \texttt{shmalloc()} catches the following errors:
 \begin{itemize}
 \item
-    Allocating memory when the shared memory is \verb/NULL/.
+    Allocating memory when the shared memory is \texttt{NULL}.
 \item
-    Specifying an invalid size. Like \verb/malloc(3)/, if the size is zero, this
-    function returns \verb/NULL/ or a pointer than can still be successfully
-    passed to \verb/shmfree()/.
+    Specifying an invalid size. Like \texttt{malloc(3)}, if the size is zero,
+    this function returns \texttt{NULL} or a pointer than can still be
+    successfully passed to \texttt{shmfree()}.
 \item
     Running out of space to fulfill the request.
 \end{itemize}
 
-Our \verb/shmfree()/ catches the following errors:
+Our \texttt{shmfree()} catches the following errors:
 \begin{itemize}
 \item
     Corruption of internal data structures (bad pointer accesses).
 \item
     Freeing a pointer more times than it has been allocated.
 \item
-    Freeing a pointer that has not been allocated by \verb/shmalloc()/.
+    Freeing a pointer that has not been allocated by \texttt{shmalloc()}.
 \item
-    Freeing a \verb/NULL/ pointer is allowed but still prints a warning message.
+    Freeing a \texttt{NULL} pointer is allowed but still prints a warning
+    message.
 \end{itemize}
 
 \subsection*{Fragmentation}
@@ -202,9 +202,9 @@ been present.
 
 \section*{Pitfalls}
 We attempted to incorporate finer granularity and the double-sided allocation
-scheme in phase two of \verb/shmalloc()/. However, the granularity will be
+scheme in phase two of \texttt{shmalloc()}. However, the granularity will be
 extremely difficult - if not impossible - to accomplish. Consider a call to
-\verb/shmalloc()/. We must search the linked list first for an existing chunk
+\texttt{shmalloc()}. We must search the linked list first for an existing chunk
 with the same ID number, and we also look for a header that satisfies our best
 fit. If we want to remember these pointers for after the traversal, we must lock
 their mutexes. However, because multiple locks in several non-adjacent parts of
@@ -215,7 +215,7 @@ a global mutex for the entire shared segment.
 
 Another issue is the choice of bit sequence. For back-to-back runs of the
 testing program, we happen to get and attach to the shared memory segment with
-the same junk data from the previous run. This fools \verb/shmalloc()/ into
+the same junk data from the previous run. This fools \texttt{shmalloc()} into
 thinking that something has been initialized when in fact its data is useless.
 Longer bit sequences could help, but there is still no guarantee that using this
 will always be error-free, even when all due care has been taken by the user.
@@ -224,5 +224,3 @@ Finally, the elegance of the memory-management API is lost with our
 shared-memory allocation. 
 
 \end{document}
-
-
